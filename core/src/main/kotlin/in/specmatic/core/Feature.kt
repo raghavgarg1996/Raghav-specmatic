@@ -398,6 +398,8 @@ data class Feature(
             else {
                 if(isInteger(base) && isInteger(new))
                     URLPathPattern(NumberPattern(), key = "id")
+                else if(areDifferentExactStrings(base, new))
+                    URLPathPattern(StringPattern(), key = "id")
                 else
                     throw ContractException("Can't figure out how to converge these URLs: ${baseScenario.httpRequestPattern.urlMatcher.path}, ${newScenario.httpRequestPattern.urlMatcher.path}")
             }
@@ -417,6 +419,18 @@ data class Feature(
                 urlMatcher = convergedURLMatcher
             )
         )
+    }
+
+    private fun areDifferentExactStrings(base: URLPathPattern, new: URLPathPattern): Boolean {
+        fun exactStringValueOrNull(urlPathPattern: URLPathPattern): String? =
+            when(val pattern = urlPathPattern.pattern) {
+                is ExactValuePattern -> pattern.pattern.toStringLiteral()
+                else -> null
+            }
+
+        return Pair(exactStringValueOrNull(base), exactStringValueOrNull(new)).let { (val1, val2) ->
+            val1 != null && val2 != null && val1 != val2
+        }
     }
 
     private fun convergeResponsePayload(baseScenario: Scenario, newScenario: Scenario): Scenario {
@@ -1794,10 +1808,18 @@ fun similarURLPath(baseScenario: Scenario, newScenario: Scenario): Boolean {
     if(basePathParts.size != newPathParts.size)
         return false
 
-    return basePathParts.zip(newPathParts).all { (base, new) ->
+    val parts = basePathParts.zip(newPathParts)
+
+    return parts.all { (base, new) ->
         isInteger(base) && isInteger(new) ||
                 base.pattern.encompasses(new.pattern, baseScenario.resolver, newScenario.resolver) is Result.Success
-    }
+    } || onlyOneStringDifference(parts)
+}
+
+fun onlyOneStringDifference(parts: List<Pair<URLPathPattern, URLPathPattern>>): Boolean {
+    return parts.filter {  (first, second) ->
+        first != second && !isInteger(first) && !isInteger(second)
+    }.size == 1
 }
 
 fun isInteger(

@@ -1,5 +1,6 @@
 package `in`.specmatic.core
 
+import `in`.specmatic.conversions.OpenApiSpecification
 import org.assertj.core.api.Assertions.assertThat
 import `in`.specmatic.core.pattern.*
 import `in`.specmatic.core.value.JSONObjectValue
@@ -547,6 +548,31 @@ paths:
         fun `teardown`() {
             File(openApiFilePathRelativeToProjectRoot).delete()
         }
+    }
+
+    @Test
+    fun `merge two scenarios with similar paths having on segment different`() {
+        fun makeScenario(path: String) = Scenario("test1",
+            HttpRequestPattern(method="GET", urlMatcher = toURLMatcherWithOptionalQueryParams(path)),
+            HttpResponsePattern(status = 200),
+            emptyMap(), emptyList(), emptyMap(), emptyMap()
+        )
+
+        val scenario1 = makeScenario("/path/one")
+        val scenario2 = makeScenario("/path/two")
+
+        val feature = Feature(listOf(scenario1, scenario2), name="test")
+        val regeneratedFeature = OpenApiSpecification("", feature.toOpenApi()).toFeature()
+
+        assertThat(regeneratedFeature.scenarios).hasSize(1)
+
+        val resolvedQueryParamType = resolvedHop(
+            regeneratedFeature.scenarios.single().httpRequestPattern.urlMatcher!!.pathPattern[1].pattern,
+            regeneratedFeature.scenarios.single().resolver
+        )
+
+        assertThat(regeneratedFeature.scenarios.single().httpRequestPattern.urlMatcher!!.pathPattern[0].pattern).isInstanceOf(ExactValuePattern::class.java)
+        assertThat(resolvedQueryParamType).isInstanceOf(StringPattern::class.java)
     }
 
     @Nested
