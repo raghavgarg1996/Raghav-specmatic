@@ -449,13 +449,13 @@ class OpenApiSpecification(private val openApiFile: String, val openApi: OpenAPI
                                     if (partSchema is BinarySchema) {
                                         MultiPartFilePattern(
                                             partNameWithPresence,
-                                            toSpecmaticPattern(partSchema, emptyList()),
+                                            toSpecmaticPattern(partSchema, emptyList(), partContentType = partContentType),
                                             partContentType
                                         )
                                     } else {
                                         MultiPartContentPattern(
                                             partNameWithPresence,
-                                            toSpecmaticPattern(partSchema, emptyList()),
+                                            toSpecmaticPattern(partSchema, emptyList(), partContentType = partContentType),
                                             partContentType
                                         )
                                     }
@@ -533,11 +533,11 @@ class OpenApiSpecification(private val openApiFile: String, val openApi: OpenAPI
     ) = if (mediaType.encoding.isNullOrEmpty()) false
     else mediaType.encoding[formFieldName]?.contentType == "application/json"
 
-    fun toSpecmaticPattern(mediaType: MediaType, jsonInFormData: Boolean = false): Pattern =
-        toSpecmaticPattern(mediaType.schema, emptyList(), jsonInFormData = jsonInFormData)
+    fun toSpecmaticPattern(mediaType: MediaType, jsonInFormData: Boolean = false, partContentType: String? = null): Pattern =
+        toSpecmaticPattern(mediaType.schema, emptyList(), jsonInFormData = jsonInFormData, partContentType = partContentType)
 
     fun toSpecmaticPattern(
-        schema: Schema<*>, typeStack: List<String>, patternName: String = "", jsonInFormData: Boolean = false
+        schema: Schema<*>, typeStack: List<String>, patternName: String = "", jsonInFormData: Boolean = false, partContentType: String? = null
     ): Pattern {
         val pattern = when (schema) {
             is StringSchema -> when (schema.enum) {
@@ -564,7 +564,7 @@ class OpenApiSpecification(private val openApiFile: String, val openApi: OpenAPI
                 }
             }
             is ArraySchema -> {
-                if (schema.xml?.name != null) {
+                if (schema.xml?.name != null || partContentType?.endsWith("/xml") == true) {
                     toXMLPattern(schema, typeStack = typeStack)
                 } else {
 
