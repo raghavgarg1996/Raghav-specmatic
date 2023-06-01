@@ -53,9 +53,10 @@ data class HttpHeadersPattern(
             it.missingKeyToResult("header", resolver.mismatchMessages).breadCrumb(it.name)
         }
 
+        val headersWithLowerCaseKeys = headersWithRelevantKeys.mapKeys { it.key.lowercase() }
         val results: List<Result?> = this.pattern.mapKeys { it.key }.map { (key, pattern) ->
-            val keyWithoutOptionality = withoutOptionality(key)
-            val sampleValue = headersWithRelevantKeys[keyWithoutOptionality]
+            val keyWithoutOptionality = withoutOptionality(key).lowercase()
+            val sampleValue = headersWithLowerCaseKeys[keyWithoutOptionality]
 
             when {
                 sampleValue != null -> {
