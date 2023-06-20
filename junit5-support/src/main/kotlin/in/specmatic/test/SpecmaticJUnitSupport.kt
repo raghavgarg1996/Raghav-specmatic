@@ -165,6 +165,7 @@ open class SpecmaticJUnitSupport {
         const val FILTER_NAME = "filterName"
         const val FILTER_NOT_NAME = "filterNotName"
         const val ENDPOINTS_API = "endpointsAPI"
+        const val ENDPOINTS_FILE = "ENDPOINT_FILE"
 
         val testsNames = mutableListOf<String>()
         val partialSuccesses: MutableList<Result.Success> = mutableListOf()
@@ -178,8 +179,9 @@ open class SpecmaticJUnitSupport {
 
         fun queryActuator() {
             val endpointsAPI = System.getProperty(ENDPOINTS_API)
+            val endpointsFileName = System.getenv(ENDPOINTS_FILE)
 
-            if(endpointsAPI != null) {
+            if (endpointsAPI != null) {
                 val request = HttpRequest("GET")
 
                 val response = HttpClient(endpointsAPI, log = ignoreLog).execute(request)
@@ -199,7 +201,7 @@ open class SpecmaticJUnitSupport {
                         val paths: JSONArrayValue? =
                             it.findFirstChildByPath("details.requestMappingConditions.patterns") as JSONArrayValue?
 
-                        if(methods != null && paths != null) {
+                        if (methods != null && paths != null) {
                             methods.list.flatMap { method ->
                                 paths.list.map { path ->
                                     API(method.toStringLiteral(), path.toStringLiteral())
@@ -209,6 +211,15 @@ open class SpecmaticJUnitSupport {
                             emptyList()
                         }
                     }
+                }
+
+                testReport.addAPIs(apis)
+            } else if (endpointsFileName != null && File(endpointsFileName).exists()) {
+                val apis = File(endpointsFileName).readText().trim().lines().map {
+                    it.trim()
+                }.map {
+                    val (method, path) = it.split(" ")
+                    API(method, path)
                 }
 
                 testReport.addAPIs(apis)
