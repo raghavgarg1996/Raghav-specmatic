@@ -215,10 +215,8 @@ open class SpecmaticJUnitSupport {
 
                 testReport.addAPIs(apis)
             } else if (endpointsFileName != null && File(endpointsFileName).exists()) {
-                val apis = File(endpointsFileName).readText().trim().lines().map {
-                    it.trim()
-                }.map {
-                    val (method, path) = it.split(" ")
+                val apis: List<API> = File(endpointsFileName).readText().trim().lines().map {
+                    val (method, path) = it.trim().split(" ")
                     API(method, path)
                 }
 
