@@ -1,68 +1,65 @@
 package `in`.specmatic.core.pattern
 
-import `in`.specmatic.core.MismatchMessages
-import `in`.specmatic.core.Resolver
-import `in`.specmatic.core.Result
-import `in`.specmatic.core.mismatchResult
-import `in`.specmatic.core.value.EmptyString
-import `in`.specmatic.core.value.NullValue
-import `in`.specmatic.core.value.ScalarValue
-import `in`.specmatic.core.value.Value
+import `in`.specmatic.core.*
+import `in`.specmatic.core.value.*
 
-data class PatternMatchResult(val pattern: Pattern, val result: Result)
-
-data class AnyPattern(
+data class AllOfPattern(
     override val pattern: List<Pattern>,
     val key: String? = null,
     override val typeAlias: String? = null
 ) : Pattern {
-    override fun equals(other: Any?): Boolean = other is AnyPattern && other.pattern == this.pattern
+    override fun equals(other: Any?): Boolean = other is AllOfPattern && other.pattern == this.pattern
 
     override fun hashCode(): Int = pattern.hashCode()
 
     override fun matches(sampleData: Value?, resolver: Resolver): Result {
+        if(pattern.isEmpty())
+            return Result.Failure("allOf specified with no schemas")
+
+        val homogenousTypeCheck = validatePatternTypes(resolver)
+        if(homogenousTypeCheck is Result.Failure)
+            return homogenousTypeCheck
+
+        val firstType = pattern.firstOrNull() ?: return Result.Failure("allOf specified with no schemas")
+        val resolvedFirstType = resolvedHop(firstType, resolver)
+
+        val resolver: Resolver = if(resolvedFirstType is JSONType) {
+            if(sampleData !is JSONObjectValue) {
+                throw ContractException("allOf specified with JSON types, but sample data is not a JSON object")
+            }
+
+            val recognizedKeys = pattern.map { resolvedHop(it, resolver) }.filterIsInstance<JSONType>().flatMap { it.keys }
+            val unrecognizedKeys = sampleData.jsonObject.keys.filterNot { it in recognizedKeys }
+
+            if(unrecognizedKeys.isNotEmpty())
+                return Result.fromFailures(unrecognizedKeys.map { MissingKeyError(it) }.map { it.missingKeyToResult("key") })
+
+            resolver.copy(findKeyErrorCheck = DefaultKeyCheck.ignoreUnexpectedKeys())
+        } else {
+            resolver
+        }
+
         val matchResults = pattern.map {
             PatternMatchResult(it, resolver.matchesPattern(key, it, sampleData ?: EmptyString))
         }
 
-        val matchResult = matchResults.find { it.result is Result.Success }
+        val matchFailures = matchResults.map { it.result }.filterIsInstance<Result.Failure>()
 
-        if(matchResult != null)
-            return matchResult.result
+        if(matchFailures.isNotEmpty())
+            return Result.fromFailures(matchFailures)
 
-        val resolvedPatterns = pattern.map { resolvedHop(it, resolver) }
-
-        if(resolvedPatterns.any { it is NullPattern } || resolvedPatterns.all { it is ExactValuePattern })
-            return failedToFindAny(
-                    typeName,
-                    sampleData,
-                    getResult(matchResults.map { it.result as Result.Failure }),
-                    resolver.mismatchMessages
-                )
-
-        val failuresWithUpdatedBreadcrumbs = matchResults.map {
-            Pair(it.pattern, it.result as Result.Failure)
-        }.map { (pattern, failure) ->
-            pattern.typeAlias?.let {
-                failure.breadCrumb("(~~~${withoutPatternDelimiters(it)} object)")
-            } ?:
-            failure
-        }
-
-        return Result.fromFailures(failuresWithUpdatedBreadcrumbs)
+        return Result.Success()
     }
 
-    private fun getResult(failures: List<Result.Failure>): List<Result.Failure> = when {
-        isNullablePattern() -> {
-            val index = pattern.indexOfFirst { !isEmpty(it) }
-            listOf(failures[index])
-        }
-        else -> failures
+    private fun validatePatternTypes(resolver: Resolver): Result {
+        val resolvedTypes = pattern.map { resolvedHop(it, resolver) }
+        val classes = resolvedTypes.map { it::class.java }
+
+        if(classes.sortedBy { it.name }.distinct().size > 1)
+            return Result.Failure("allOf can only contain patterns of the same type. Found: ${resolvedTypes.joinToString(", ") { it.typeName }}")
+
+        return Result.Success()
     }
-
-    private fun isNullablePattern() = pattern.size == 2 && pattern.any { isEmpty(it) }
-
-    private fun isEmpty(it: Pattern) = it.typeAlias == "(empty)" || it is NullPattern
 
     override fun generate(resolver: Resolver): Value {
         val randomPattern = pattern.random()
@@ -158,20 +155,6 @@ data class AnyPattern(
 
     override val typeName: String
         get() {
-            return if (pattern.size == 2 && isNullablePattern()) {
-                val concreteTypeName =
-                    withoutPatternDelimiters(pattern.filterNot { it is NullPattern || it.typeAlias == "(empty)" }
-                        .first().typeName)
-                "($concreteTypeName?)"
-            } else
-                "(${pattern.joinToString(" or ") { inner -> withoutPatternDelimiters(inner.typeName).let { if(it == "null") "\"null\"" else it}  }})"
+            return "( ${pattern.joinToString(" and ") { it.typeName }} )"
         }
 }
-
-private fun failedToFindAny(expected: String, actual: Value?, results: List<Result.Failure>, mismatchMessages: MismatchMessages): Result.Failure =
-    when (results.size) {
-        1 -> results[0]
-        else -> {
-            mismatchResult(expected, actual, mismatchMessages)
-        }
-    }

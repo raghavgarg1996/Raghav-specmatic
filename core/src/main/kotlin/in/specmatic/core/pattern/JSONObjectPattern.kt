@@ -20,7 +20,10 @@ fun toJSONObjectPattern(map: Map<String, Pattern>, typeAlias: String? = null): J
     return JSONObjectPattern(map.minus("..."), missingKeyStrategy, typeAlias)
 }
 
-data class JSONObjectPattern(override val pattern: Map<String, Pattern> = emptyMap(), private val unexpectedKeyCheck: UnexpectedKeyCheck = ValidateUnexpectedKeys, override val typeAlias: String? = null) : Pattern {
+data class JSONObjectPattern(override val pattern: Map<String, Pattern> = emptyMap(), private val unexpectedKeyCheck: UnexpectedKeyCheck = ValidateUnexpectedKeys, override val typeAlias: String? = null) : Pattern, JSONType {
+    override val keys: List<String>
+        get() = pattern.keys.toList().map { withoutOptionality(it) }
+
     override fun equals(other: Any?): Boolean = when (other) {
         is JSONObjectPattern -> this.pattern == other.pattern
         else -> false

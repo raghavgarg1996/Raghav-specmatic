@@ -1,5 +1,6 @@
 package `in`.specmatic.core
 
+import `in`.specmatic.core.pattern.IgnoreUnexpectedKeys
 import `in`.specmatic.core.pattern.Pattern
 import `in`.specmatic.core.value.StringValue
 
@@ -31,6 +32,10 @@ data class KeyCheck(val patternKeyCheck: KeyErrorCheck = CheckOnlyPatternKeys,
 
     fun validateAllCaseInsensitive(pattern: Map<String, Pattern>, actual: Map<String, StringValue>): List<KeyError> {
         return patternKeyCheck.validateListCaseInsensitive(pattern, actual).plus(unexpectedKeyCheck.validateListCaseInsensitive(pattern, actual))
+    }
+
+    fun ignoreUnexpectedKeys(): KeyCheck {
+        return this.withUnexpectedKeyCheck(IgnoreUnexpectedKeys)
     }
 
 }
