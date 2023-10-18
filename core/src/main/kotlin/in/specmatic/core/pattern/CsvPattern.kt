@@ -64,6 +64,10 @@ class CsvPattern(override val pattern: Pattern) : Pattern {
         return JSONArrayValue(valueList)
     }
 
+    override fun merge(pattern: Pattern, resolver: Resolver): Pattern {
+        return this.merge(pattern, resolver)
+    }
+
     override fun toString(): String {
         return typeName
     }

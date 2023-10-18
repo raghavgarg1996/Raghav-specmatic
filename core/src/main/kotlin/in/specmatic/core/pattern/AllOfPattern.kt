@@ -23,7 +23,7 @@ data class AllOfPattern(
         val firstType = pattern.firstOrNull() ?: return Result.Failure("allOf specified with no schemas")
         val resolvedFirstType = resolvedHop(firstType, resolver)
 
-        val resolver: Resolver = if(resolvedFirstType is JSONType) {
+        val resolverBasedOnType: Resolver = if(resolvedFirstType is JSONType) {
             if(sampleData !is JSONObjectValue) {
                 throw ContractException("allOf specified with JSON types, but sample data is not a JSON object")
             }
@@ -40,7 +40,7 @@ data class AllOfPattern(
         }
 
         val matchResults = pattern.map {
-            PatternMatchResult(it, resolver.matchesPattern(key, it, sampleData ?: EmptyString))
+            PatternMatchResult(it, resolverBasedOnType.matchesPattern(key, it, sampleData ?: EmptyString))
         }
 
         val matchFailures = matchResults.map { it.result }.filterIsInstance<Result.Failure>()
@@ -62,73 +62,35 @@ data class AllOfPattern(
     }
 
     override fun generate(resolver: Resolver): Value {
-        val randomPattern = pattern.random()
-        val isNullable = pattern.any {it is NullPattern}
-        return resolver.withCyclePrevention(randomPattern, isNullable) { cyclePreventedResolver ->
-            when (key) {
-                null -> randomPattern.generate(cyclePreventedResolver)
-                else -> cyclePreventedResolver.generate(key, randomPattern)
-            }
-        }?: NullValue // Terminates cycle gracefully. Only happens if isNullable=true so that it is contract-valid.
+        return mergedPattern(resolver).generate(resolver)
+    }
+
+    private fun mergedPattern(resolver: Resolver): Pattern {
+        return pattern.reduce { acc, pattern ->
+            resolver.withCyclePrevention(pattern, false) { cyclePreventedResolver ->
+                acc.merge(pattern, cyclePreventedResolver)
+            } ?: acc
+        }
     }
 
     override fun newBasedOn(row: Row, resolver: Resolver): List<Pattern> {
-        val isNullable = pattern.any {it is NullPattern}
-        return pattern.sortedBy{ it is NullPattern }.flatMap { innerPattern ->
-            resolver.withCyclePrevention(innerPattern, isNullable) { cyclePreventedResolver ->
-                innerPattern.newBasedOn(row, cyclePreventedResolver)
-            }?: listOf()  // Terminates cycle gracefully. Only happens if isNullable=true so that it is contract-valid.
-        }
+        return mergedPattern(resolver).newBasedOn(row, resolver)
     }
 
     override fun newBasedOn(resolver: Resolver): List<Pattern> {
-        val isNullable = pattern.any {it is NullPattern}
-        return pattern.flatMap { innerPattern ->
-            resolver.withCyclePrevention(innerPattern, isNullable) { cyclePreventedResolver ->
-                innerPattern.newBasedOn(cyclePreventedResolver)
-            }?: listOf()  // Terminates cycle gracefully. Only happens if isNullable=true so that it is contract-valid.
-        }
+        return mergedPattern(resolver).newBasedOn(resolver)
     }
 
     override fun negativeBasedOn(row: Row, resolver: Resolver): List<Pattern> {
-        val nullable = pattern.any { it is NullPattern }
-
-        val negativeTypes = pattern.flatMap {
-            it.negativeBasedOn(row, resolver)
-        }.let {
-            if (nullable)
-                it.filterNot { it is NullPattern }
-            else
-                it
-        }
-
-        return if(negativeTypes.all { it is ScalarType })
-            negativeTypes.distinct()
-        else
-            negativeTypes
+        return mergedPattern(resolver).negativeBasedOn(row, resolver)
     }
 
     override fun parse(value: String, resolver: Resolver): Value {
-        val resolvedTypes = pattern.map { resolvedHop(it, resolver) }
-        val nonNullTypesFirst = resolvedTypes.filterNot { it is NullPattern }.plus(resolvedTypes.filterIsInstance<NullPattern>())
-
-        return nonNullTypesFirst.asSequence().map {
-            try {
-                it.parse(value, resolver)
-            } catch (e: Throwable) {
-                null
-            }
-        }.find { it != null } ?: throw ContractException(
-            "Failed to parse value \"$value\". It should have matched one of ${
-                pattern.joinToString(
-                    ", "
-                ) { it.typeName }
-            }."
-        )
+        return mergedPattern(resolver).parse(value, resolver)
     }
 
     override fun patternSet(resolver: Resolver): List<Pattern> =
-        this.pattern.flatMap { it.patternSet(resolver) }
+        mergedPattern(resolver).patternSet(resolver)
 
     override fun encompasses(
         otherPattern: Pattern,
@@ -136,21 +98,18 @@ data class AllOfPattern(
         otherResolver: Resolver,
         typeStack: TypeStack
     ): Result {
-        val compatibleResult = otherPattern.fitsWithin(patternSet(thisResolver), otherResolver, thisResolver, typeStack)
-
-        return if(compatibleResult is Result.Failure && allValuesAreScalar())
-            mismatchResult(this, otherPattern, thisResolver.mismatchMessages)
-        else
-            compatibleResult
+        return mergedPattern(thisResolver).encompasses(otherPattern, thisResolver, otherResolver, typeStack)
     }
-
-    private fun allValuesAreScalar() = pattern.all { it is ExactValuePattern && it.pattern is ScalarValue }
 
     override fun listOf(valueList: List<Value>, resolver: Resolver): Value {
         if (pattern.isEmpty())
-            throw ContractException("AnyPattern doesn't have any types, so can't infer which type of list to wrap the given value in")
+            throw ContractException("allOf doesn't have any types, so can't infer which type of list to wrap the given value in")
 
         return pattern.first().listOf(valueList, resolver)
+    }
+
+    override fun merge(pattern: Pattern, resolver: Resolver): Pattern {
+        return mergedPattern(resolver).merge(pattern, resolver)
     }
 
     override val typeName: String
