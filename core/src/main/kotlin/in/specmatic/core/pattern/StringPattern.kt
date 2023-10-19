@@ -68,7 +68,18 @@ data class StringPattern(
     override val typeName: String = "string"
 
     override val pattern: Any = "(string)"
-    override fun toString(): String = pattern.toString()
+
+    override fun merge(pattern: Pattern, resolver: Resolver): Pattern {
+        if (pattern !is StringPattern)
+            throw ContractException("Cannot merge ${this.typeAlias} with ${pattern.typeAlias}")
+
+        val resolvedMin = listOfNotNull(minLength, pattern.minLength).maxOrNull()
+        val resolvedMax = listOfNotNull(maxLength, pattern.maxLength).minOrNull()
+
+        return StringPattern(minLength = resolvedMin, maxLength = resolvedMax)
+    }
+
+    override fun toString(): String = "(string minLength=$minLength maxLength=$maxLength)"
 }
 
 fun randomString(length: Int = 5): String {

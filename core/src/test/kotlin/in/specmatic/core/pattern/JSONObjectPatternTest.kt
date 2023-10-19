@@ -9,7 +9,11 @@ import `in`.specmatic.shouldNotMatch
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Nested
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.Arguments
+import org.junit.jupiter.params.provider.MethodSource
 import java.util.function.Consumer
+import java.util.stream.Stream
 
 internal class JSONObjectPatternTest {
     @Test
@@ -399,6 +403,46 @@ internal class JSONObjectPatternTest {
         fun `key errors appear before value errors`() {
             assertThat(reportText.indexOf(">> person_address")).isLessThan(reportText.indexOf(">> id"))
             assertThat(reportText.indexOf(">> address")).isLessThan(reportText.indexOf(">> id"))
+        }
+    }
+
+    @ParameterizedTest
+    @MethodSource("mergeJSONObjectTests")
+    fun `merge two object types`(o1: JSONObjectPattern, o2: JSONObjectPattern, expected: JSONObjectPattern) {
+        println(o1)
+        println(o2)
+        assertThat(o1.merge(o2, Resolver())).isEqualTo(expected)
+    }
+
+    companion object {
+        @JvmStatic
+        fun mergeJSONObjectTests(): Stream<Arguments> {
+            return Stream.of(
+                Arguments.of(
+                    JSONObjectPattern(mapOf("id" to NumberPattern())),
+                    JSONObjectPattern(mapOf("name" to StringPattern())),
+                    JSONObjectPattern(mapOf("id" to NumberPattern(), "name" to StringPattern()))),
+                Arguments.of(
+                    JSONObjectPattern(mapOf("id" to NumberPattern())),
+                    JSONObjectPattern(mapOf("id?" to NumberPattern())),
+                    JSONObjectPattern(mapOf("id" to NumberPattern()))),
+                Arguments.of(
+                    JSONObjectPattern(mapOf("id?" to NumberPattern())),
+                    JSONObjectPattern(mapOf("id" to NumberPattern())),
+                    JSONObjectPattern(mapOf("id" to NumberPattern()))),
+                Arguments.of(
+                    JSONObjectPattern(mapOf("id?" to NumberPattern())),
+                    JSONObjectPattern(mapOf("id?" to NumberPattern())),
+                    JSONObjectPattern(mapOf("id?" to NumberPattern()))),
+                Arguments.of(
+                    JSONObjectPattern(mapOf("id" to NumberPattern())),
+                    JSONObjectPattern(mapOf("id" to NumberPattern())),
+                    JSONObjectPattern(mapOf("id" to NumberPattern()))),
+                Arguments.of(
+                    JSONObjectPattern(mapOf("address" to JSONObjectPattern(mapOf("street" to StringPattern(minLength = 5))))),
+                    JSONObjectPattern(mapOf("address" to JSONObjectPattern(mapOf("street" to StringPattern(minLength = 6))))),
+                    JSONObjectPattern(mapOf("address" to JSONObjectPattern(mapOf("street" to StringPattern(minLength = 6)))))),
+            )
         }
     }
 }

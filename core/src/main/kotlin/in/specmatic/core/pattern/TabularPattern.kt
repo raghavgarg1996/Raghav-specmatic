@@ -28,6 +28,13 @@ data class TabularPattern(
     override val keys: List<String>
         get() = pattern.keys.toList().map { withoutOptionality(it) }
 
+    override fun merge(pattern: Pattern, resolver: Resolver): Pattern {
+        if (pattern !is TabularPattern)
+            throw ContractException("Cannot merge ${this.typeAlias} with ${pattern.typeAlias}")
+
+        return TabularPattern(mergeObjectEntries(this.pattern, pattern.pattern, resolver))
+    }
+
     override fun matches(sampleData: Value?, resolver: Resolver): Result {
         if (sampleData !is JSONObjectValue)
             return mismatchResult("JSON object", sampleData, resolver.mismatchMessages)

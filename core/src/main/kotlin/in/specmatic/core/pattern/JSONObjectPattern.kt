@@ -29,6 +29,13 @@ data class JSONObjectPattern(override val pattern: Map<String, Pattern> = emptyM
         else -> false
     }
 
+    override fun merge(pattern: Pattern, resolver: Resolver): Pattern {
+        if (pattern !is JSONObjectPattern)
+            throw ContractException("Cannot merge ${this.typeAlias} with ${pattern.typeAlias}")
+
+        return JSONObjectPattern(mergeObjectEntries(this.pattern, pattern.pattern, resolver))
+    }
+
     override fun encompasses(otherPattern: Pattern, thisResolver: Resolver, otherResolver: Resolver, typeStack: TypeStack): Result {
         val thisResolverWithNullType = withNullPattern(thisResolver)
         val otherResolverWithNullType = withNullPattern(otherResolver)
@@ -142,4 +149,36 @@ internal fun mapEncompassesMap(pattern: Map<String, Pattern>, otherPattern: Map<
     }
 
     return Result.fromResults(missingFixedKeyErrors.plus(keyErrors))
+}
+
+fun mergeObjectEntries(pattern1: Map<String, Pattern>, pattern2: Map<String, Pattern>, resolver: Resolver): Map<String, Pattern> {
+    return pattern2.entries.fold(pattern1) { acc, entry2 ->
+        val mandatoryKey = withoutOptionality(entry2.key)
+        val optionalKey = "$mandatoryKey?"
+
+        val keyInAcc = listOf(mandatoryKey, optionalKey).find { it in acc }
+
+        when(Pair(keyInAcc, entry2.key)) {
+            Pair(null, optionalKey), Pair(null, mandatoryKey) -> {
+                acc.plus(entry2.key to entry2.value)
+            }
+            Pair(optionalKey, mandatoryKey) -> {
+                val accValueType = acc.getValue(optionalKey)
+                val mergedType = accValueType.merge(entry2.value, resolver)
+
+                acc.minus(optionalKey).plus(mandatoryKey to mergedType)
+            }
+            Pair(mandatoryKey, optionalKey) -> {
+                val accValueType = acc.getValue(mandatoryKey)
+                val mergedType = accValueType.merge(entry2.value, resolver)
+
+                acc.plus(mandatoryKey to mergedType)
+            }
+            else -> {
+                val accValueType = acc.getValue(entry2.key)
+                val mergedType = accValueType.merge(entry2.value, resolver)
+                acc.plus(entry2.key to mergedType)
+            }
+        }
+    }
 }

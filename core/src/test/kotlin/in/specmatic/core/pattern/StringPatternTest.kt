@@ -82,6 +82,16 @@ internal class StringPatternTest {
                 Arguments.of(null, null, 5)
             )
         }
+
+        @JvmStatic
+        fun stringPatternMergeTests(): Stream<Arguments> {
+            return Stream.of(
+                Arguments.of(StringPattern(minLength = 5), StringPattern(maxLength = 10), StringPattern(minLength = 5, maxLength = 10)),
+                Arguments.of(StringPattern(minLength = 5), StringPattern(), StringPattern(minLength = 5)),
+                Arguments.of(StringPattern(), StringPattern(maxLength = 10), StringPattern(maxLength = 10)),
+                Arguments.of(StringPattern(minLength = 5, maxLength = 10), StringPattern(minLength = 6, maxLength = 9), StringPattern(minLength = 6, maxLength = 9))
+            )
+        }
     }
 
     @ParameterizedTest
@@ -119,5 +129,13 @@ internal class StringPatternTest {
 
         println(result.reportString())
         assertThat(result).isInstanceOf(Result.Failure::class.java)
+    }
+
+    @ParameterizedTest
+    @MethodSource("stringPatternMergeTests")
+    fun `merged string patterns constraints should be combined`(s1: StringPattern, s2: StringPattern, expected: StringPattern) {
+        s1.merge(s2, Resolver()).let {
+            assertThat(it).isEqualTo(expected)
+        }
     }
 }
