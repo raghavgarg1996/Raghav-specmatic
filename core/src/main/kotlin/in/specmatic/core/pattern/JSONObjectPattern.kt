@@ -36,7 +36,8 @@ data class JSONObjectPattern(override val pattern: Map<String, Pattern> = emptyM
         return JSONObjectPattern(mergeObjectEntries(this.pattern, pattern.pattern, resolver))
     }
 
-    override fun encompasses(otherPattern: Pattern, thisResolver: Resolver, otherResolver: Resolver, typeStack: TypeStack): Result {
+    override fun encompasses(_otherPattern: Pattern, thisResolver: Resolver, otherResolver: Resolver, typeStack: TypeStack): Result {
+        val otherPattern = resolvedHop(_otherPattern, otherResolver)
         val thisResolverWithNullType = withNullPattern(thisResolver)
         val otherResolverWithNullType = withNullPattern(otherResolver)
 

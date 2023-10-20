@@ -2,10 +2,9 @@ package `in`.specmatic.core.pattern
 
 import `in`.specmatic.core.Resolver
 import `in`.specmatic.core.Result
-import `in`.specmatic.core.value.JSONObjectValue
-import `in`.specmatic.core.value.NumberValue
 import `in`.specmatic.core.value.StringValue
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
@@ -108,5 +107,83 @@ class AllOfPatternTest {
 
         assertThat(result).isInstanceOf(Result.Failure::class.java)
         assertThat(result.reportString()).contains("contain patterns of the same type")
+    }
+
+    @Test
+    fun `it generates an object matching all types`() {
+        val allOf = AllOfPattern(
+            listOf(
+                JSONObjectPattern(mapOf("id" to NumberPattern())),
+                JSONObjectPattern(mapOf("name" to StringPattern())))
+        )
+
+        val value = allOf.generate(Resolver())
+
+        assertThat(allOf.matches(value, Resolver())).isInstanceOf(Result.Success::class.java)
+    }
+
+    @Test
+    fun `it generates tests based on an example having all fields`() {
+        val allOf = AllOfPattern(
+            listOf(
+                JSONObjectPattern(mapOf("id" to NumberPattern())),
+                JSONObjectPattern(mapOf("name" to StringPattern())))
+        )
+
+        val generatedTypes = allOf.newBasedOn(Row(columnNames = listOf("id", "name"), values = listOf("10", "Jeremy")), Resolver())
+        val value = generatedTypes.first().generate(Resolver())
+
+        assertThat(value).isEqualTo(parsedJSONObject("""{"id": 10, "name": "Jeremy"}"""))
+    }
+
+    @Test
+    fun `the backward compatibility test should pass for a backward compatible change to a json object`() {
+        val older = AllOfPattern(
+            listOf(
+                JSONObjectPattern(mapOf("id" to NumberPattern())),
+                JSONObjectPattern(mapOf("name" to StringPattern())))
+        )
+
+        val newer = AllOfPattern(
+            listOf(
+                JSONObjectPattern(mapOf("id" to NumberPattern())),
+                JSONObjectPattern(mapOf(
+                    "name" to StringPattern(),
+                    "description?" to StringPattern())))
+        )
+
+        val backwardCompatibleResult = newer.encompasses(older, Resolver(), Resolver())
+        assertThat(backwardCompatibleResult).isInstanceOf(Result.Success::class.java)
+    }
+
+    @Test
+    fun `the backward compatibility test should pass when comparing allOf string to string`() {
+        val older = AllOfPattern(listOf(StringPattern()))
+        val newer = StringPattern()
+
+        val backwardCompatibleResult = newer.encompasses(older, Resolver(), Resolver())
+
+        println(backwardCompatibleResult.reportString())
+
+        assertThat(backwardCompatibleResult).isInstanceOf(Result.Success::class.java)
+    }
+
+    @Test
+    fun `the backward compatibility test should fail for a backward incompatible change from number to string`() {
+        val older = AllOfPattern(
+            listOf(
+                JSONObjectPattern(mapOf("id" to NumberPattern())),
+                JSONObjectPattern(mapOf("name" to StringPattern())))
+        )
+
+        val newer = AllOfPattern(
+            listOf(
+                JSONObjectPattern(mapOf("id" to StringPattern())),
+                JSONObjectPattern(mapOf(
+                    "name" to StringPattern())))
+        )
+
+        val backwardCompatibleResult = newer.encompasses(older, Resolver(), Resolver())
+        assertThat(backwardCompatibleResult).isInstanceOf(Result.Failure::class.java)
     }
 }

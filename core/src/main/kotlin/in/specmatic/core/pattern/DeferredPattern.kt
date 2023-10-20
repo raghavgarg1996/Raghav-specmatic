@@ -72,6 +72,7 @@ fun resolvedHop(pattern: Pattern, resolver: Resolver): Pattern {
     return when(pattern) {
         is DeferredPattern -> resolvedHop(pattern.resolvePattern(resolver), resolver)
         is LookupRowPattern -> resolvedHop(pattern.pattern, resolver)
+        is AllOfPattern -> pattern.mergedPattern(resolver)
         else -> pattern
     }
 }

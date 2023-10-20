@@ -6,8 +6,8 @@ import `in`.specmatic.core.value.*
 data class AllOfPattern(
     override val pattern: List<Pattern>,
     val key: String? = null,
-    override val typeAlias: String? = null
 ) : Pattern {
+    override val typeAlias: String? = null
     override fun equals(other: Any?): Boolean = other is AllOfPattern && other.pattern == this.pattern
 
     override fun hashCode(): Int = pattern.hashCode()
@@ -65,7 +65,7 @@ data class AllOfPattern(
         return mergedPattern(resolver).generate(resolver)
     }
 
-    private fun mergedPattern(resolver: Resolver): Pattern {
+    fun mergedPattern(resolver: Resolver): Pattern {
         return pattern.reduce { acc, pattern ->
             resolver.withCyclePrevention(pattern, false) { cyclePreventedResolver ->
                 acc.merge(pattern, cyclePreventedResolver)

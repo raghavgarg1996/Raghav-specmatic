@@ -81,13 +81,16 @@ data class NumberPattern(
 }
 
 fun encompasses(
-    thisPattern: Pattern,
-    otherPattern: Pattern,
+    _thisPattern: Pattern,
+    _otherPattern: Pattern,
     thisResolver: Resolver,
     otherResolver: Resolver,
     typeStack: TypeStack
-): Result =
-    when {
+): Result {
+    val thisPattern = resolvedHop(_thisPattern, thisResolver)
+    val otherPattern = resolvedHop(_otherPattern, otherResolver)
+
+    return when {
         otherPattern::class == thisPattern::class -> Result.Success()
         otherPattern is ExactValuePattern -> otherPattern.fitsWithin(
             thisPattern.patternSet(thisResolver),
@@ -107,3 +110,4 @@ fun encompasses(
         }
         else -> mismatchResult(thisPattern, otherPattern, thisResolver.mismatchMessages)
     }
+}
