@@ -79,7 +79,13 @@ data class StringPattern(
         return StringPattern(minLength = resolvedMin, maxLength = resolvedMax)
     }
 
-    override fun toString(): String = "(string minLength=$minLength maxLength=$maxLength)"
+    override fun toString(): String =
+        listOf("(string")
+            .plus(minLength?.let { "minLength=$minLength"})
+            .plus(maxLength?.let { "maxLength=$maxLength"})
+            .filterNotNull()
+            .plus(")")
+            .joinToString("")
 }
 
 fun randomString(length: Int = 5): String {

@@ -12,53 +12,67 @@ data class AllOfPattern(
 
     override fun hashCode(): Int = pattern.hashCode()
 
+    override fun matchPatternKeys(sampleData: JSONObjectValue, resolver: Resolver): Pair<Result, List<String>> {
+        val (keysMatched, results) = pattern.foldRight(Pair(emptySet<String>(), emptyList<Result>())) { type, acc ->
+            val (keysMatchedSoFar, resultsSoFar) = acc
+            val (result, keysMatched) = type.matchPatternKeys(sampleData, resolver)
+            Pair(keysMatchedSoFar.plus(keysMatched), resultsSoFar.plus(result))
+        }
+
+        val failures = results.filterIsInstance<Result.Failure>()
+
+        if(failures.isNotEmpty())
+            return Pair(Result.fromFailures(failures), keysMatched.toList())
+
+        return Pair(Result.Success(), keysMatched.toList())
+    }
+
     override fun matches(sampleData: Value?, resolver: Resolver): Result {
         if(pattern.isEmpty())
             return Result.Failure("allOf specified with no schemas")
 
-        val homogenousTypeCheck = validatePatternTypes(resolver)
-        if(homogenousTypeCheck is Result.Failure)
-            return homogenousTypeCheck
-
-        val firstType = pattern.firstOrNull() ?: return Result.Failure("allOf specified with no schemas")
-        val resolvedFirstType = resolvedHop(firstType, resolver)
-
-        val resolverBasedOnType: Resolver = if(resolvedFirstType is JSONType) {
+        return if(pattern.first().isJSONType(resolver)) {
             if(sampleData !is JSONObjectValue) {
                 throw ContractException("allOf specified with JSON types, but sample data is not a JSON object")
             }
 
-            val recognizedKeys = pattern.map { resolvedHop(it, resolver) }.filterIsInstance<JSONType>().flatMap { it.keys }
-            val unrecognizedKeys = sampleData.jsonObject.keys.filterNot { it in recognizedKeys }
+            val (result, keysMatched) = matchPatternKeys(
+                sampleData,
+                resolver.copy(findKeyErrorCheck = DefaultKeyCheck.ignoreUnexpectedKeys())
+            )
 
-            if(unrecognizedKeys.isNotEmpty())
-                return Result.fromFailures(unrecognizedKeys.map { MissingKeyError(it) }.map { it.missingKeyToResult("key") })
+            val unmatchedKeys = sampleData.jsonObject.keys.filter { it !in keysMatched }
 
-            resolver.copy(findKeyErrorCheck = DefaultKeyCheck.ignoreUnexpectedKeys())
+            if(unmatchedKeys.isNotEmpty())
+                Result.Failure("Unmatched keys: ${unmatchedKeys.joinToString(", ")}")
+            else
+                result
         } else {
-            resolver
+            val matchResults = pattern.map {
+                PatternMatchResult(it, resolver.matchesPattern(key, it, sampleData ?: EmptyString))
+            }
+
+            val matchFailures = matchResults.map { it.result }.filterIsInstance<Result.Failure>()
+
+            if(matchFailures.isNotEmpty())
+                Result.fromFailures(matchFailures)
+            else
+                Result.Success()
         }
-
-        val matchResults = pattern.map {
-            PatternMatchResult(it, resolverBasedOnType.matchesPattern(key, it, sampleData ?: EmptyString))
-        }
-
-        val matchFailures = matchResults.map { it.result }.filterIsInstance<Result.Failure>()
-
-        if(matchFailures.isNotEmpty())
-            return Result.fromFailures(matchFailures)
-
-        return Result.Success()
     }
 
-    private fun validatePatternTypes(resolver: Resolver): Result {
-        val resolvedTypes = pattern.map { resolvedHop(it, resolver) }
-        val classes = resolvedTypes.map { it::class.java }
+    private fun resolvePatterns(type: Pattern, resolver: Resolver): List<Pattern> {
+        val resolved = resolvedHop(type, resolver)
+        return when (resolved) {
+            is AnyPattern ->
+                resolved.pattern.flatMap { resolvePatterns(resolvedHop(it, resolver), resolver) }
 
-        if(classes.sortedBy { it.name }.distinct().size > 1)
-            return Result.Failure("allOf can only contain patterns of the same type. Found: ${resolvedTypes.joinToString(", ") { it.typeName }}")
+            is AllOfPattern ->
+                resolved.pattern.flatMap { resolvePatterns(resolvedHop(it, resolver), resolver) }
 
-        return Result.Success()
+            else ->
+                listOf(resolved)
+        }
     }
 
     override fun generate(resolver: Resolver): Value {

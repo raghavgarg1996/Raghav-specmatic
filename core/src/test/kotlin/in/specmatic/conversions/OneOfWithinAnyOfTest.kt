@@ -49,21 +49,25 @@ components:
         - id
     PersonDetails:
       oneOf:
-        - type: object
-          properties:
-            name:
-              type: string
-          required:
-            - name
-        - type: object
-          properties:
-            first_name:
-              type: string
-            last_name:
-              type: string
-          required:
-            - first_name
-            - last_name
+        - ${"$"}ref: '#/components/schemas/SimpleName'
+        - ${"$"}ref: '#/components/schemas/DestructuredName'
+    SimpleName:
+      type: object
+      properties:
+        name:
+          type: string
+      required:
+        - name
+    DestructuredName:
+      type: object
+      properties:
+        first_name:
+          type: string
+        last_name:
+          type: string
+      required:
+        - first_name
+        - last_name
     PersonRecord:
       allOf:
         - ${"$"}ref: '#/components/schemas/Id'

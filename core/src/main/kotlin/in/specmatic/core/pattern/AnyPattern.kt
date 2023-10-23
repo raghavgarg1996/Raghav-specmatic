@@ -4,10 +4,7 @@ import `in`.specmatic.core.MismatchMessages
 import `in`.specmatic.core.Resolver
 import `in`.specmatic.core.Result
 import `in`.specmatic.core.mismatchResult
-import `in`.specmatic.core.value.EmptyString
-import `in`.specmatic.core.value.NullValue
-import `in`.specmatic.core.value.ScalarValue
-import `in`.specmatic.core.value.Value
+import `in`.specmatic.core.value.*
 
 data class PatternMatchResult(val pattern: Pattern, val result: Result)
 
@@ -19,6 +16,23 @@ data class AnyPattern(
     override fun equals(other: Any?): Boolean = other is AnyPattern && other.pattern == this.pattern
 
     override fun hashCode(): Int = pattern.hashCode()
+
+    override fun matchPatternKeys(sampleData: JSONObjectValue, resolver: Resolver): Pair<Result, List<String>> {
+        val result = pattern.map {
+            it.matchPatternKeys(sampleData, resolver)
+        }.let { results ->
+            val successes = results.filter { it.first is Result.Success }
+
+            if(successes.size == 1)
+                successes.single()
+            else if(successes.isNotEmpty())
+                Pair(Result.Failure("Multiple options in the oneOf spec were matched"), emptyList())
+            else
+                Pair(Result.fromResults(results.map { it.first }), emptyList())
+        }
+
+        return result
+    }
 
     override fun matches(sampleData: Value?, resolver: Resolver): Result {
         val matchResults = pattern.map {

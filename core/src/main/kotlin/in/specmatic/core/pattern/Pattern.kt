@@ -2,6 +2,7 @@ package `in`.specmatic.core.pattern
 
 import `in`.specmatic.core.Resolver
 import `in`.specmatic.core.Result
+import `in`.specmatic.core.value.JSONObjectValue
 import `in`.specmatic.core.value.StringValue
 import `in`.specmatic.core.value.Value
 
@@ -60,6 +61,14 @@ interface Pattern {
     fun merge(pattern: Pattern, resolver: Resolver): Pattern {
         if (pattern::javaClass == this::javaClass) return this
         throw ContractException("Cannot merge ${this.typeAlias} with ${pattern.typeAlias}")
+    }
+
+    fun matchPatternKeys(sampleData: JSONObjectValue, resolver: Resolver): Pair<Result, List<String>> {
+        return Pair(Result.Failure("Not a JSON object, could not validate the given value"), emptyList())
+    }
+
+    fun isJSONType(resolver: Resolver): Boolean {
+        return false
     }
 
     val typeAlias: String?

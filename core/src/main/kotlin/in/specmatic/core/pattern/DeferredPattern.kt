@@ -3,6 +3,7 @@ package `in`.specmatic.core.pattern
 import `in`.specmatic.core.Resolver
 import `in`.specmatic.core.Result
 import `in`.specmatic.core.value.EmptyString
+import `in`.specmatic.core.value.JSONObjectValue
 import `in`.specmatic.core.value.Value
 
 data class DeferredPattern(override val pattern: String, val key: String? = null) : Pattern {
@@ -11,6 +12,16 @@ data class DeferredPattern(override val pattern: String, val key: String? = null
         else -> false
     }
     override fun hashCode(): Int = pattern.hashCode()
+
+    override fun merge(pattern: Pattern, resolver: Resolver): Pattern {
+        return resolvePattern(resolver).merge(resolvedHop(pattern, resolver), resolver)
+    }
+
+    override fun isJSONType(resolver: Resolver) =
+        resolvePattern(resolver).isJSONType(resolver)
+    override fun matchPatternKeys(sampleData: JSONObjectValue, resolver: Resolver): Pair<Result, List<String>> {
+        return resolvePattern(resolver).matchPatternKeys(sampleData, resolver)
+    }
 
     override fun matches(sampleData: Value?, resolver: Resolver) =
             resolver.matchesPattern(key, resolver.getPattern(pattern), sampleData ?: EmptyString)
