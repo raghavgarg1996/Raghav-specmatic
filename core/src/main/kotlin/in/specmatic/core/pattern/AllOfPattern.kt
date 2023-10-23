@@ -61,20 +61,6 @@ data class AllOfPattern(
         }
     }
 
-    private fun resolvePatterns(type: Pattern, resolver: Resolver): List<Pattern> {
-        val resolved = resolvedHop(type, resolver)
-        return when (resolved) {
-            is AnyPattern ->
-                resolved.pattern.flatMap { resolvePatterns(resolvedHop(it, resolver), resolver) }
-
-            is AllOfPattern ->
-                resolved.pattern.flatMap { resolvePatterns(resolvedHop(it, resolver), resolver) }
-
-            else ->
-                listOf(resolved)
-        }
-    }
-
     override fun generate(resolver: Resolver): Value {
         return mergedPattern(resolver).generate(resolver)
     }
