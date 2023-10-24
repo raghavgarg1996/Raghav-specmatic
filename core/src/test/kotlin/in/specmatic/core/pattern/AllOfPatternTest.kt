@@ -106,7 +106,7 @@ class AllOfPatternTest {
         val result = allOf.matches(sampleData, Resolver())
 
         assertThat(result).isInstanceOf(Result.Failure::class.java)
-        assertThat(result.reportString()).contains("contain patterns of the same type")
+        assertThat(result.reportString()).contains("Expected number")
     }
 
     @Test
