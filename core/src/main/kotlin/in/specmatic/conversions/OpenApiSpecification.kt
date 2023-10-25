@@ -852,7 +852,7 @@ class OpenApiSpecification(private val openApiFile: String, val openApi: OpenAPI
             is ComposedSchema -> {
                 if (schema.allOf != null) {
                     val types = (schema.allOf ?: emptyList()).map {
-                        toSpecmaticPattern(it, typeStack)
+                        toSpecmaticPattern(it, typeStack, patternName, jsonInFormData)
                     }
 
                     AllOfPattern(types)

@@ -59,7 +59,12 @@ interface Pattern {
     fun listOf(valueList: List<Value>, resolver: Resolver): Value
 
     fun merge(pattern: Pattern, resolver: Resolver): Pattern {
-        if (pattern::javaClass == this::javaClass) return this
+        val resolvedOther = resolvedHop(pattern, resolver)
+        val resolvedThis = resolvedHop(this, resolver)
+
+        if (resolvedOther::javaClass == resolvedThis::javaClass)
+            return this
+
         throw ContractException("Cannot merge ${this.typeAlias} with ${pattern.typeAlias}")
     }
 

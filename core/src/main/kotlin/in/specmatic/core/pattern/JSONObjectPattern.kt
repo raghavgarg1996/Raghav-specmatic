@@ -34,10 +34,12 @@ data class JSONObjectPattern(override val pattern: Map<String, Pattern> = emptyM
     }
 
     override fun merge(pattern: Pattern, resolver: Resolver): Pattern {
-        if (pattern !is JSONObjectPattern)
+        val resolved = resolvedHop(pattern, resolver)
+
+        if (resolved !is JSONObjectPattern)
             throw ContractException("Cannot merge ${this.typeAlias} with ${pattern.typeAlias}")
 
-        return JSONObjectPattern(mergeObjectEntries(this.pattern, pattern.pattern, resolver))
+        return JSONObjectPattern(mergeObjectEntries(this.pattern, resolved.pattern, resolver))
     }
 
     override fun matchPatternKeys(sampleData: JSONObjectValue, resolver: Resolver): Pair<Result, List<String>> {

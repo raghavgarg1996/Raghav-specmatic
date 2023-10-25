@@ -29,10 +29,12 @@ data class TabularPattern(
         get() = pattern.keys.toList().map { withoutOptionality(it) }
 
     override fun merge(pattern: Pattern, resolver: Resolver): Pattern {
-        if (pattern !is TabularPattern)
+        val resolved = resolvedHop(pattern, resolver)
+
+        if (resolved !is TabularPattern)
             throw ContractException("Cannot merge ${this.typeAlias} with ${pattern.typeAlias}")
 
-        return TabularPattern(mergeObjectEntries(this.pattern, pattern.pattern, resolver))
+        return TabularPattern(mergeObjectEntries(this.pattern, resolved.pattern, resolver))
     }
 
     override fun matches(sampleData: Value?, resolver: Resolver): Result {

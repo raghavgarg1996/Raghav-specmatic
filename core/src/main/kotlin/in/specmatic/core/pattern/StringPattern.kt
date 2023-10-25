@@ -70,11 +70,13 @@ data class StringPattern(
     override val pattern: Any = "(string)"
 
     override fun merge(pattern: Pattern, resolver: Resolver): Pattern {
-        if (pattern !is StringPattern)
+        val resolved = resolvedHop(pattern, resolver)
+
+        if (resolved !is StringPattern)
             throw ContractException("Cannot merge ${this.typeAlias} with ${pattern.typeAlias}")
 
-        val resolvedMin = listOfNotNull(minLength, pattern.minLength).maxOrNull()
-        val resolvedMax = listOfNotNull(maxLength, pattern.maxLength).minOrNull()
+        val resolvedMin = listOfNotNull(minLength, resolved.minLength).maxOrNull()
+        val resolvedMax = listOfNotNull(maxLength, resolved.maxLength).minOrNull()
 
         return StringPattern(minLength = resolvedMin, maxLength = resolvedMax)
     }
