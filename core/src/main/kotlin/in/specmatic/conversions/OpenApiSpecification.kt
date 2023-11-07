@@ -852,19 +852,11 @@ class OpenApiSpecification(private val openApiFile: String, val openApi: OpenAPI
             is ComposedSchema -> {
                 if (schema.allOf != null) {
                     val types = (schema.allOf ?: emptyList()).map {
-                        toSpecmaticPattern(it, typeStack, patternName, jsonInFormData)
+                        toSpecmaticPattern(it, typeStack, "", jsonInFormData)
                     }
 
                     AllOfPattern(types)
 
-//                    val deepListOfAllOfs = resolveDeepAllOfs(schema)
-//                    val schemaProperties = deepListOfAllOfs.map { schemaToProcess ->
-//                        val requiredFields = schemaToProcess.required.orEmpty()
-//                        toSchemaProperties(schemaToProcess, requiredFields, patternName, typeStack)
-//                    }.fold(emptyMap<String, Pattern>()) { acc, entry -> acc.plus(entry) }
-
-//                    val jsonObjectPattern = toJSONObjectPattern(schemaProperties, "(${patternName})")
-//                    jsonObjectPattern
                 } else if (schema.oneOf != null) {
                     val candidatePatterns = schema.oneOf.filterNot { nullableEmptyObject(it) } .map { componentSchema ->
                         val (componentName, schemaToProcess) =
