@@ -1,5 +1,6 @@
 package `in`.specmatic.core.pattern
 
+import `in`.specmatic.conversions.OpenApiSpecification
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import `in`.specmatic.core.*
@@ -400,5 +401,110 @@ internal class JSONObjectPatternTest {
             assertThat(reportText.indexOf(">> person_address")).isLessThan(reportText.indexOf(">> id"))
             assertThat(reportText.indexOf(">> address")).isLessThan(reportText.indexOf(">> id"))
         }
+    }
+
+    @Test
+    fun test() {
+        val specificationString = """
+            openapi: "3.0.0"
+            info:
+              version: 1.0.0
+              title: Swagger Petstore
+              description: A sample API that uses a petstore as an example to demonstrate features in the OpenAPI 3.0 specification
+              termsOfService: http://swagger.io/terms/
+              contact:
+                name: Swagger API Team
+                email: apiteam@swagger.io
+                url: http://swagger.io
+              license:
+                name: Apache 2.0
+                url: https://www.apache.org/licenses/LICENSE-2.0.html
+            servers:
+              - url: http://petstore.swagger.io/api
+            paths:
+              /pets:
+                post:
+                  description: Creates a new pet in the store. Duplicates are allowed
+                  operationId: addPet
+                  requestBody:
+                    description: Pet to add to the store
+                    required: true
+                    content:
+                      application/json:
+                        schema:
+                          ${"$"}ref: '#/components/schemas/NewPet'
+                  responses:
+                    '201':
+                      description: pet response
+                      content:
+                        application/json:
+                          schema:
+                            ${"$"}ref: '#/components/schemas/PetId'
+            components:
+              schemas:
+                PetId:
+                  type: object
+                  required:
+                    - id
+                  properties:
+                    id:
+                      type: integer
+                      format: int64
+                NewPet:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      nullable: true
+                    owner:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          nullable: true
+                        address:
+                          type: object
+                          properties:
+                            street:
+                              type: string
+                              nullable: true
+                            city:
+                              type: string
+                              nullable: true
+        """.trimIndent()
+
+        val specification = OpenApiSpecification.fromYAML(specificationString, "").toFeature().copy(generativeTestingEnabled = true)
+        val testScenarios = specification.generateContractTestScenarios(emptyList())
+
+        println("Count of all scenarios: ${testScenarios.size}")
+
+        val positiveScenarios = testScenarios.filter { it.testDescription().contains("+ve") }
+        println("Count of +ve scenarios: ${positiveScenarios.size}")
+
+        positiveScenarios.forEach { printRequestBody(it) }
+    }
+
+    private fun printRequestBody(scenario: Scenario) {
+        val requestBody = scenario.httpRequestPattern.body as JSONObjectPattern
+
+        println("--------------------")
+        println(if(scenario.testDescription().contains("-ve")) "-ve" else "+ve")
+        println(stringize(requestBody.pattern, ""))
+    }
+
+    private fun stringize(pattern: Map<String, Pattern>, indent: String): String {
+        if(pattern.isEmpty())
+            return "${indent}Empty object"
+
+        return pattern.map { (key, value) ->
+            when(value) {
+                is JSONObjectPattern -> {
+                    "$indent$key:\n${stringize(value.pattern, "$indent  ")}"
+                }
+                else -> {
+                    "$indent$key: ${value.typeName}"
+                }
+            }
+        }.joinToString("\n")
     }
 }
