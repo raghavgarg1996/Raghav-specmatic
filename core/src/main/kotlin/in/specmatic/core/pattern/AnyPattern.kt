@@ -11,15 +11,18 @@ data class PatternMatchResult(val pattern: Pattern, val result: Result)
 data class AnyPattern(
     override val pattern: List<Pattern>,
     val key: String? = null,
-    override val typeAlias: String? = null
+    override val typeAlias: String? = null,
+    val discriminatorKey: String? = null
 ) : Pattern {
     override fun equals(other: Any?): Boolean = other is AnyPattern && other.pattern == this.pattern
 
     override fun hashCode(): Int = pattern.hashCode()
 
     override fun matchPatternKeys(sampleData: JSONObjectValue, resolver: Resolver): Pair<Result, List<String>> {
-        val result = pattern.map {
-            it.matchPatternKeys(sampleData, resolver)
+        val _resolver = resolver.copy(discriminatorKey = discriminatorKey)
+
+        return pattern.map {
+            it.matchPatternKeys(sampleData, _resolver)
         }.let { results ->
             val successes = results.filter { it.first is Result.Success }
 
@@ -30,13 +33,13 @@ data class AnyPattern(
             else
                 Pair(Result.fromResults(results.map { it.first }), emptyList())
         }
-
-        return result
     }
 
     override fun matches(sampleData: Value?, resolver: Resolver): Result {
+        val _resolver = resolver.copy(discriminatorKey = discriminatorKey)
+
         val matchResults = pattern.map {
-            PatternMatchResult(it, resolver.matchesPattern(key, it, sampleData ?: EmptyString))
+            PatternMatchResult(it, _resolver.matchesPattern(key, it, sampleData ?: EmptyString))
         }
 
         val matchResult = matchResults.find { it.result is Result.Success }
@@ -44,14 +47,14 @@ data class AnyPattern(
         if(matchResult != null)
             return matchResult.result
 
-        val resolvedPatterns = pattern.map { resolvedHop(it, resolver) }
+        val resolvedPatterns = pattern.map { resolvedHop(it, _resolver) }
 
         if(resolvedPatterns.any { it is NullPattern } || resolvedPatterns.all { it is ExactValuePattern })
             return failedToFindAny(
                     typeName,
                     sampleData,
                     getResult(matchResults.map { it.result as Result.Failure }),
-                    resolver.mismatchMessages
+                    _resolver.mismatchMessages
                 )
 
         val failuresWithUpdatedBreadcrumbs = matchResults.map {
@@ -79,6 +82,9 @@ data class AnyPattern(
     private fun isEmpty(it: Pattern) = it.typeAlias == "(empty)" || it is NullPattern
 
     override fun generate(resolver: Resolver): Value {
+        if(discriminatorKey != null && resolver.discriminatorKey == null)
+            return generate(resolver.copy(discriminatorKey = discriminatorKey))
+
         val randomPattern = pattern.random()
         val isNullable = pattern.any {it is NullPattern}
         return resolver.withCyclePrevention(randomPattern, isNullable) { cyclePreventedResolver ->
@@ -90,15 +96,50 @@ data class AnyPattern(
     }
 
     override fun newBasedOn(row: Row, resolver: Resolver): List<Pattern> {
-        val isNullable = pattern.any {it is NullPattern}
-        return pattern.sortedBy{ it is NullPattern }.flatMap { innerPattern ->
-            resolver.withCyclePrevention(innerPattern, isNullable) { cyclePreventedResolver ->
-                innerPattern.newBasedOn(row, cyclePreventedResolver)
-            }?: listOf()  // Terminates cycle gracefully. Only happens if isNullable=true so that it is contract-valid.
+        if(discriminatorKey != null && resolver.discriminatorKey == null)
+            return this.newBasedOn(row, resolver.copy(discriminatorKey = discriminatorKey))
+
+        val isNullable = pattern.any { it is NullPattern }
+        val patternResults: List<Pair<List<Pattern>?, Throwable?>> =
+            pattern.sortedBy { it is NullPattern }.map { innerPattern ->
+                try {
+                    val patterns =
+                        resolver.withCyclePrevention(innerPattern, isNullable) { cyclePreventedResolver ->
+                            innerPattern.newBasedOn(row, cyclePreventedResolver)
+                        } ?: listOf()
+                    Pair(patterns, null)
+                } catch (e: Throwable) {
+                    Pair(null, e)
+                }
+            }
+
+        return newTypesOrExceptionIfNone(patternResults, "Could not generate new tests")
+    }
+
+    private fun newTypesOrExceptionIfNone(patternResults: List<Pair<List<Pattern>?, Throwable?>>, message: String): List<Pattern> {
+        val newPatterns: List<Pattern> = patternResults.mapNotNull { it.first }.flatten()
+
+        if (newPatterns.isEmpty() && pattern.isNotEmpty()) {
+            val exceptions = patternResults.mapNotNull { it.second }.map {
+                when (it) {
+                    is ContractException -> it
+                    else -> ContractException(exceptionCause = it)
+                }
+            }
+
+            val failures = exceptions.map { it.failure() }
+
+            val failure = Result.Failure.fromFailures(failures)
+
+            throw ContractException(failure.toFailureReport(message))
         }
+        return newPatterns
     }
 
     override fun newBasedOn(resolver: Resolver): List<Pattern> {
+        if(discriminatorKey != null && resolver.discriminatorKey == null)
+            return this.newBasedOn(resolver.copy(discriminatorKey = discriminatorKey))
+
         val isNullable = pattern.any {it is NullPattern}
         return pattern.flatMap { innerPattern ->
             resolver.withCyclePrevention(innerPattern, isNullable) { cyclePreventedResolver ->
@@ -110,9 +151,20 @@ data class AnyPattern(
     override fun negativeBasedOn(row: Row, resolver: Resolver): List<Pattern> {
         val nullable = pattern.any { it is NullPattern }
 
-        val negativeTypes = pattern.flatMap {
-            it.negativeBasedOn(row, resolver)
-        }.let {
+        val negativeTypeResults = pattern.map {
+            try {
+                val patterns =
+                    it.negativeBasedOn(row, resolver)
+                Pair(patterns, null)
+            } catch(e: Throwable) {
+                Pair(null, e)
+            }
+        }
+
+        val negativeTypes = newTypesOrExceptionIfNone(
+            negativeTypeResults,
+            "Could not get negative tests"
+        ).let {
             if (nullable)
                 it.filterNot { it is NullPattern }
             else
@@ -153,6 +205,9 @@ data class AnyPattern(
         otherResolver: Resolver,
         typeStack: TypeStack
     ): Result {
+        if(discriminatorKey != null && thisResolver.discriminatorKey == null)
+            return this.encompasses(otherPattern, thisResolver.copy(discriminatorKey = discriminatorKey), otherResolver.copy(discriminatorKey = discriminatorKey), typeStack)
+
         val compatibleResult = otherPattern.fitsWithin(patternSet(thisResolver), otherResolver, thisResolver, typeStack)
 
         return if(compatibleResult is Result.Failure && allValuesAreScalar())

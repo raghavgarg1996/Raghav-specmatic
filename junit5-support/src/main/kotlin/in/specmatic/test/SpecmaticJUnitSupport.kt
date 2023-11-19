@@ -49,10 +49,8 @@ open class SpecmaticJUnitSupport {
         @AfterAll
         @JvmStatic
         fun report() {
-            specmaticConfigJson?.let {
-                val reportProcessors = listOf(OpenApiCoverageReportProcessor(openApiCoverageReportInput))
-                reportProcessors.forEach { it.process(getReportConfiguration()) }
-            }
+            val reportProcessors = listOf(OpenApiCoverageReportProcessor(openApiCoverageReportInput))
+            reportProcessors.forEach { it.process(getReportConfiguration()) }
         }
 
         private fun getReportConfiguration(): ReportConfiguration {
@@ -196,8 +194,6 @@ open class SpecmaticJUnitSupport {
             return loadExceptionAsTestError(e)
         } catch(e: Throwable) {
             return loadExceptionAsTestError(e)
-        } finally {
-            workingDirectory.delete()
         }
 
         val invoker = when(val testBaseURL = System.getProperty(TEST_BASE_URL)) {
@@ -287,8 +283,8 @@ open class SpecmaticJUnitSupport {
                 if (it.scenarios.isEmpty())
                     logger.log("All scenarios were filtered out.")
                 else if (it.scenarios.size < feature.scenarios.size) {
-                    logger.log("Selected scenarios:")
-                    it.scenarios.forEach { scenario -> logger.log(scenario.testDescription().prependIndent("  ")) }
+                    logger.debug("Selected scenarios:")
+                    it.scenarios.forEach { scenario -> logger.debug(scenario.testDescription().prependIndent("  ")) }
                 }
             }
             .generateContractTests(suggestions)

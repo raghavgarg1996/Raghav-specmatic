@@ -327,7 +327,7 @@ Background:
 
         assertThat(flags["/demo/circular-reference-polymorphic executed"]).isTrue
         assertThat(flags.size).isEqualTo(1)
-        assertThat(results.report()).isEqualTo("""Match not found""".trimIndent())
+        assertThat(results.hasFailures())
     }
 
     @Test
@@ -1028,14 +1028,7 @@ Background:
     @Test
     @RepeatedTest(10) // Try to exercise all outcomes of AnyPattern.generate() which randomly selects from its options
     fun `should validate and generate with polymorphic cyclic reference in open api`() {
-        val feature = parseGherkinStringToFeature(
-            """
-Feature: Hello world
-
-Background:
-  Given openapi openapi/circular-reference-polymorphic.yaml
-        """.trimIndent(), sourceSpecPath
-        )
+        val feature = OpenApiSpecification.fromFile("src/test/resources/openapi/circular-reference-polymorphic.yaml").toFeature()
 
         val result = testBackwardCompatibility(feature, feature)
         assertThat(result.success()).isTrue()

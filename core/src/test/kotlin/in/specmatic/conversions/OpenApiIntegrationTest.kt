@@ -3,6 +3,7 @@ package `in`.specmatic.conversions
 import com.google.common.net.HttpHeaders
 import `in`.specmatic.core.*
 import `in`.specmatic.core.pattern.ContractException
+import `in`.specmatic.core.pattern.parsedJSONObject
 import `in`.specmatic.core.value.Value
 import `in`.specmatic.stub.createStubFromContracts
 import `in`.specmatic.test.TestExecutor
@@ -10,6 +11,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import java.io.File
 
 class OpenApiIntegrationTest {
@@ -371,6 +374,35 @@ Feature: Authenticated
         }
 
         @Test
+        fun `should generate test with bearer security scheme with token in authorization header from security configuration`() {
+            val token = "TOKEN1234"
+            val feature = parseContractFileToFeature(
+                "./src/test/resources/openapi/authenticated.yaml",
+                securityConfiguration = securityConfigurationForBearerScheme(token)
+            )
+            val contractTests = feature.generateContractTestScenarios(emptyList())
+            var requestMadeWithTokenFromSpecmaticJson = false
+            contractTests.forEach { scenario ->
+                val result = executeTest(scenario, object : TestExecutor {
+                    override fun execute(request: HttpRequest): HttpResponse {
+                        request.headers[HttpHeaders.AUTHORIZATION]?.takeIf {
+                            it == "Bearer TOKEN1234"
+                        }?.let {
+                            requestMadeWithTokenFromSpecmaticJson = true
+                        }
+                        return HttpResponse.OK("success")
+                    }
+
+                    override fun setServerState(serverState: Map<String, Value>) {
+
+                    }
+                })
+                assertThat(result).isInstanceOf(Result.Success::class.java)
+            }
+            assertThat(requestMadeWithTokenFromSpecmaticJson).isTrue
+        }
+
+        @Test
         fun `should match http request with authorization header for spec with bearer security scheme`() {
             val feature = parseGherkinStringToFeature(
                 """
@@ -431,6 +463,16 @@ Background:
             assertThat(result).isInstanceOf(Result.Failure::class.java)
             assertThat(result.reportString()).contains("Authorization header must be prefixed with \"Bearer\"")
         }
+
+        private fun securityConfigurationForBearerScheme(token: String) = SecurityConfiguration(
+            OpenAPI = OpenAPISecurityConfiguration(
+                securitySchemes = mapOf(
+                    "BearerAuth" to BearerSecuritySchemeConfiguration(
+                        "bearer", token
+                    )
+                )
+            )
+        )
 
     }
 
@@ -535,6 +577,64 @@ Feature: Authenticated
         }
 
         @Test
+        fun `should generate test with api key in header security scheme with token in header from security configuration`() {
+            val token = "APIHEADERKEY1234"
+            val feature = parseContractFileToFeature(
+                "./src/test/resources/openapi/authenticated.yaml",
+                securityConfiguration = securityConfigurationForApiKeyInHeaderScheme(token)
+            )
+            val contractTests = feature.generateContractTestScenarios(emptyList())
+            var requestMadeWithApiKeyInHeaderFromSpecmaticJson = false
+            contractTests.forEach { scenario ->
+                val result = executeTest(scenario, object : TestExecutor {
+                    override fun execute(request: HttpRequest): HttpResponse {
+                        request.headers["X-API-KEY"]?.takeIf {
+                            it == "APIHEADERKEY1234"
+                        }?.let {
+                            requestMadeWithApiKeyInHeaderFromSpecmaticJson = true
+                        }
+                        return HttpResponse.OK("success")
+                    }
+
+                    override fun setServerState(serverState: Map<String, Value>) {
+
+                    }
+                })
+                assertThat(result).isInstanceOf(Result.Success::class.java)
+            }
+            assertThat(requestMadeWithApiKeyInHeaderFromSpecmaticJson).isTrue
+        }
+
+        @Test
+        fun `should generate test with api key in query param security scheme with token in query param from security configuration`() {
+            val token = "APIQUERYKEY1234"
+            val feature = parseContractFileToFeature(
+                "./src/test/resources/openapi/authenticated.yaml",
+                securityConfiguration = securityConfigurationForApiKeyInQueryScheme(token)
+            )
+            val contractTests = feature.generateContractTestScenarios(emptyList())
+            var requestMadeWithApiKeyInQueryFromSpecmaticJson = false
+            contractTests.forEach { scenario ->
+                val result = executeTest(scenario, object : TestExecutor {
+                    override fun execute(request: HttpRequest): HttpResponse {
+                        request.queryParams["apiKey"]?.takeIf {
+                            it == "APIQUERYKEY1234"
+                        }?.let {
+                            requestMadeWithApiKeyInQueryFromSpecmaticJson = true
+                        }
+                        return HttpResponse.OK("success")
+                    }
+
+                    override fun setServerState(serverState: Map<String, Value>) {
+
+                    }
+                })
+                assertThat(result).isInstanceOf(Result.Success::class.java)
+            }
+            assertThat(requestMadeWithApiKeyInQueryFromSpecmaticJson).isTrue
+        }
+
+        @Test
         fun `should generate stub that authenticates with api key in header and query`() {
             createStubFromContracts(listOf("src/test/resources/openapi/apiKeyAuth.yaml")).use {
                 val requestWithHeader = HttpRequest(
@@ -559,6 +659,89 @@ Feature: Authenticated
                 val responseFromQuery = it.client.execute(requestWithQuery)
                 assertThat(responseFromQuery.status).isEqualTo(200)
             }
+        }
+
+        private fun securityConfigurationForApiKeyInHeaderScheme(token: String) = SecurityConfiguration(
+            OpenAPI = OpenAPISecurityConfiguration(
+                securitySchemes = mapOf(
+                    "ApiKeyAuthHeader" to APIKeySecuritySchemeConfiguration(
+                        "apiKey", token
+                    )
+                )
+            )
+        )
+
+        private fun securityConfigurationForApiKeyInQueryScheme(token: String) = SecurityConfiguration(
+            OpenAPI = OpenAPISecurityConfiguration(
+                securitySchemes = mapOf(
+                    "ApiKeyAuthQuery" to APIKeySecuritySchemeConfiguration(
+                        "apiKey", token
+                    )
+                )
+            )
+        )
+    }
+
+    @ParameterizedTest
+    @CsvSource(
+        value = [
+        """pass | {"name": "John", "surname": "James"}""",
+        """fail | {}""",
+        """fail | {"name": "John", "surname": "James", "fathers_name": "James"}""",
+        ],
+        delimiter = '|',
+        ignoreLeadingAndTrailingWhitespace = true
+    )
+    fun `minProperties and maxProperties should be honored`(expectedResult: String, requestBody: String) {
+        val yamlContent = """
+            openapi: 3.0.1
+            info:
+              title: API
+              version: 1
+            paths:
+              /name:
+                post:
+                  summary: Post name
+                  requestBody:
+                    content:
+                      application/json:
+                        schema:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            surname:
+                              type: string
+                            fathers_name:
+                              type: string
+                          minProperties: 1
+                          maxProperties: 2
+                          required:
+                            - name
+                  responses:
+                    '200':
+                      description: Successful response
+                      content:
+                        application/json:
+                          schema:
+                            type: object
+                            properties:
+                              message:
+                                type: string
+        """.trimIndent()
+
+        val feature = OpenApiSpecification.fromYAML(yamlContent, "").toFeature()
+        val result = feature.scenarios.first().httpRequestPattern.matches(
+            HttpRequest(
+                "POST",
+                "/name",
+                body = parsedJSONObject(requestBody)
+            ), Resolver()
+        )
+
+        when(expectedResult) {
+            "pass" -> assertThat(result).isInstanceOf(Result.Success::class.java)
+            "fail" -> assertThat(result).isInstanceOf(Result.Failure::class.java)
         }
     }
 }

@@ -32,10 +32,12 @@ import io.swagger.v3.parser.core.models.SwaggerParseResult
 import java.io.File
 
 private const val BEARER_SECURITY_SCHEME = "bearer"
+private const val SPECMATIC_OAUTH2_TOKEN = "SPECMATIC_OAUTH2_TOKEN"
 private const val SERVICE_TYPE_HTTP = "HTTP"
 
 private const val testDirectoryEnvironmentVariable = "SPECMATIC_TESTS_DIRECTORY"
 private const val testDirectoryProperty = "specmaticTestsDirectory"
+
 
 class OpenApiSpecification(private val openApiFile: String, val openApi: OpenAPI, private val sourceProvider:String? = null, private val sourceRepository:String? = null, private val sourceRepositoryBranch:String? = null, private val specificationPath:String? = null, private val securityConfiguration:SecurityConfiguration? = null) : IncludedSpecification,
     ApiSpecification {
@@ -774,11 +776,15 @@ class OpenApiSpecification(private val openApiFile: String, val openApi: OpenAPI
             BEARER_SECURITY_SCHEME, SecurityScheme.Type.OAUTH2.toString() ->
                 securitySchemeConfiguration?.let {
                     (it as SecuritySchemeWithOAuthToken).token
-                }
+                } ?: getBearerTokenFromEnvironment()
 
             else -> throw ContractException("Cannot use the Bearer Security Scheme implementation for scheme type: $type")
         }
         return BearerSecurityScheme(token)
+    }
+
+    private fun getBearerTokenFromEnvironment(): String? {
+        return System.getenv(SPECMATIC_OAUTH2_TOKEN)
     }
 
     private fun toFormFields(mediaType: MediaType) =
@@ -795,18 +801,6 @@ class OpenApiSpecification(private val openApiFile: String, val openApi: OpenAPI
 
     fun toSpecmaticPattern(mediaType: MediaType, jsonInFormData: Boolean = false): Pattern =
         toSpecmaticPattern(mediaType.schema, emptyList(), jsonInFormData = jsonInFormData)
-
-    private fun resolveDeepAllOfs(schema: Schema<Any>): List<Schema<Any>> {
-        if(schema.allOf == null)
-            return listOf(schema)
-
-        return schema.allOf.flatMap { constituentSchema ->
-            if (constituentSchema.`$ref` != null) {
-                val (_, referredSchema) = resolveReferenceToSchema(constituentSchema.`$ref`)
-                resolveDeepAllOfs(referredSchema)
-            } else listOf(constituentSchema)
-        }
-    }
 
     fun toSpecmaticPattern(
         schema: Schema<*>, typeStack: List<String>, patternName: String = "", jsonInFormData: Boolean = false
@@ -855,8 +849,12 @@ class OpenApiSpecification(private val openApiFile: String, val openApi: OpenAPI
                         toSpecmaticPattern(it, typeStack, "", jsonInFormData)
                     }
 
-                    AllOfPattern(types)
+                    val typeAlias: String? = if(patternName.isNotBlank()) {
+                        "(${patternName})"
+                    } else
+                        null
 
+                    AllOfPattern(types, typeAlias = typeAlias)
                 } else if (schema.oneOf != null) {
                     val candidatePatterns = schema.oneOf.filterNot { nullableEmptyObject(it) } .map { componentSchema ->
                         val (componentName, schemaToProcess) =
@@ -867,7 +865,9 @@ class OpenApiSpecification(private val openApiFile: String, val openApi: OpenAPI
 
                     val nullable = if(schema.oneOf.any { nullableEmptyObject(it) }) listOf(NullPattern) else emptyList()
 
-                    AnyPattern(candidatePatterns.plus(nullable))
+                    val discriminatorKey: String? = schema.discriminator?.propertyName
+
+                    AnyPattern(candidatePatterns.plus(nullable), discriminatorKey = discriminatorKey)
                 } else if (schema.anyOf != null) {
                     throw UnsupportedOperationException("Specmatic does not support anyOf")
                 } else {
@@ -1099,7 +1099,12 @@ class OpenApiSpecification(private val openApiFile: String, val openApi: OpenAPI
     ): JSONObjectPattern {
         val requiredFields = schema.required.orEmpty()
         val schemaProperties = toSchemaProperties(schema, requiredFields, patternName, typeStack)
-        val jsonObjectPattern = toJSONObjectPattern(schemaProperties, "(${patternName})")
+        val minProperties: Int? = schema.minProperties
+        val maxProperties: Int? = schema.maxProperties
+        val jsonObjectPattern = toJSONObjectPattern(schemaProperties, "(${patternName})").copy(
+            minProperties = minProperties,
+            maxProperties = maxProperties
+        )
         return cacheComponentPattern(patternName, jsonObjectPattern)
     }
 
