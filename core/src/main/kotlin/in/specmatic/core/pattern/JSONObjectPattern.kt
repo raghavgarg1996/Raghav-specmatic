@@ -212,7 +212,7 @@ data class JSONObjectPattern(override val pattern: Map<String, Pattern> = emptyM
             }
         }
 
-        return allOrNothingCombinationIn(pattern.minus("..."), if(resolver.generativeTestingEnabled) Row() else row, minProperties, maxProperties) { pattern ->
+        return allOrNothingCombinationIn(pattern.minus("..."), resolver.resolveRow(row), minProperties, maxProperties) { pattern ->
             newBasedOn(pattern, row, withNullPattern(resolver))
         }.map { toJSONObjectPattern(it.mapKeys { (key, _) ->
             withoutOptionality(key)

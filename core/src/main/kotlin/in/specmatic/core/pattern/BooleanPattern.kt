@@ -8,7 +8,7 @@ import `in`.specmatic.core.value.JSONArrayValue
 import `in`.specmatic.core.value.Value
 import java.util.*
 
-object BooleanPattern : Pattern, ScalarType {
+data class BooleanPattern(val example: String? = null) : Pattern, ScalarType {
     override fun matches(sampleData: Value?, resolver: Resolver): Result =
         when(sampleData) {
             is BooleanValue -> Result.Success()
@@ -16,7 +16,7 @@ object BooleanPattern : Pattern, ScalarType {
         }
 
     override fun generate(resolver: Resolver): Value =
-        randomBoolean()
+        resolver.resolveExample(example, this) ?: randomBoolean()
 
     override fun newBasedOn(row: Row, resolver: Resolver): List<Pattern> = listOf(this)
     override fun newBasedOn(resolver: Resolver): List<Pattern> = listOf(this)
@@ -25,7 +25,7 @@ object BooleanPattern : Pattern, ScalarType {
     }
 
     override fun parse(value: String, resolver: Resolver): Value = when (value) {
-        !in listOf("true", "false") -> throw ContractException(mismatchResult(BooleanPattern, value, resolver.mismatchMessages).toFailureReport())
+        !in listOf("true", "false") -> throw ContractException(mismatchResult(BooleanPattern(), value, resolver.mismatchMessages).toFailureReport())
         else -> BooleanValue(value.toBoolean())
     }
     override fun encompasses(otherPattern: Pattern, thisResolver: Resolver, otherResolver: Resolver, typeStack: TypeStack): Result {

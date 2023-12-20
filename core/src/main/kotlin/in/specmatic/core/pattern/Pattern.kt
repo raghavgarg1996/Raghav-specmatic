@@ -1,5 +1,6 @@
 package `in`.specmatic.core.pattern
 
+import `in`.specmatic.core.Flags
 import `in`.specmatic.core.Resolver
 import `in`.specmatic.core.Result
 import `in`.specmatic.core.value.JSONObjectValue
@@ -74,6 +75,10 @@ interface Pattern {
 
     fun isJSONType(resolver: Resolver): Boolean {
         return false
+    }
+
+    fun toNullable(defaultValue: String?): Pattern {
+        return AnyPattern(listOf(NullPattern, this), example = defaultValue)
     }
 
     val typeAlias: String?

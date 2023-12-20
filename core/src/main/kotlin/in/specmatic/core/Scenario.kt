@@ -50,13 +50,13 @@ data class Scenario(
     val isNegative: Boolean = false,
     val badRequestOrDefault: BadRequestOrDefault? = null,
     val exampleName: String? = null,
-    val generativeTestingEnabled: Boolean = false,
     val generatedFromExamples: Boolean = examples.isNotEmpty(),
     val sourceProvider:String? = null,
     val sourceRepository:String? = null,
     val sourceRepositoryBranch:String? = null,
     val specification:String? = null,
-    val serviceType:String? = null
+    val serviceType:String? = null,
+    val generativePrefix: String = ""
 ): ScenarioDetailsForResult {
     constructor(scenarioInfo: ScenarioInfo) : this(
         scenarioInfo.scenarioName,
@@ -216,8 +216,8 @@ data class Scenario(
         }
     }
 
-    fun generateHttpRequest(): HttpRequest =
-        scenarioBreadCrumb(this) { httpRequestPattern.generate(Resolver(expectedFacts, false, patterns)) }
+    fun generateHttpRequest(resolverStrategies: ResolverStrategies = DefaultStrategies): HttpRequest =
+        scenarioBreadCrumb(this) { httpRequestPattern.generate(resolverStrategies.update(Resolver(expectedFacts, false, patterns))) }
 
     fun matches(httpResponse: HttpResponse, mismatchMessages: MismatchMessages = DefaultMismatchMessages, unexpectedKeyCheck: UnexpectedKeyCheck? = null): Result {
         val resolver = Resolver(expectedFacts, false, patterns).copy(mismatchMessages = mismatchMessages).let {
@@ -229,7 +229,7 @@ data class Scenario(
 
         if (this.isNegative) {
             return if (is4xxResponse(httpResponse)) {
-                if(badRequestOrDefault != null && badRequestOrDefault.supports(httpResponse))
+                if(badRequestOrDefault != null && badRequestOrDefault.supports(httpResponse.status))
                     badRequestOrDefault.matches(httpResponse, resolver).updateScenario(this)
                 else
                     Result.Failure("Received ${httpResponse.status}, but the specification does not contain a 4xx response, hence unable to verify this response", breadCrumb = "RESPONSE.STATUS").updateScenario(this)
@@ -265,9 +265,13 @@ data class Scenario(
         }
     }
 
-    private fun newBasedOn(row: Row, generativeTestingEnabled: Boolean = false): List<Scenario> {
+    private fun newBasedOn(row: Row, resolverStrategies: ResolverStrategies): List<Scenario> {
         val ignoreFailure = this.ignoreFailure || row.name.startsWith("[WIP]")
-        val resolver = Resolver(expectedFacts, false, patterns).copy(mismatchMessages = ContractAndRowValueMismatch, generativeTestingEnabled = generativeTestingEnabled)
+        val resolver =
+            Resolver(expectedFacts, false, patterns)
+            .copy(
+                mismatchMessages = ContractAndRowValueMismatch
+            ).let { resolverStrategies.update(it) }
 
         val newExpectedServerState = newExpectedServerStateBasedOn(row, expectedFacts, fixtures, resolver)
 
@@ -277,27 +281,11 @@ data class Scenario(
                     false -> httpRequestPattern.newBasedOn(row, resolver, httpResponsePattern.status)
                     else -> httpRequestPattern.negativeBasedOn(row, resolver.copy(isNegative = true))
                 }.map { newHttpRequestPattern ->
-                    Scenario(
-                        name,
-                        newHttpRequestPattern,
-                        httpResponsePattern,
-                        newExpectedServerState,
-                        examples,
-                        patterns,
-                        fixtures,
-                        ignoreFailure,
-                        references,
-                        bindings,
-                        isGherkinScenario,
-                        isNegative,
-                        badRequestOrDefault,
-                        row.name,
-                        generativeTestingEnabled,
-                        sourceProvider = sourceProvider,
-                        sourceRepository = sourceRepository,
-                        sourceRepositoryBranch = sourceRepositoryBranch,
-                        specification = specification,
-                        serviceType = serviceType
+                    this.copy(
+                        httpRequestPattern = newHttpRequestPattern,
+                        expectedFacts = newExpectedServerState,
+                        ignoreFailure = ignoreFailure,
+                        exampleName = row.name
                     )
                 }
             }
@@ -310,30 +298,17 @@ data class Scenario(
         val newExpectedServerState = newExpectedServerStateBasedOn(row, expectedFacts, fixtures, resolver)
 
         return httpRequestPattern.newBasedOn(resolver).map { newHttpRequestPattern ->
-            Scenario(
-                name,
-                newHttpRequestPattern,
-                httpResponsePattern,
-                newExpectedServerState,
-                examples,
-                patterns,
-                fixtures,
-                ignoreFailure,
-                references,
-                bindings,
-                sourceProvider = sourceProvider,
-                sourceRepository = sourceRepository,
-                sourceRepositoryBranch = sourceRepositoryBranch,
-                specification = specification,
-                serviceType = serviceType
+            this.copy(
+                httpRequestPattern = newHttpRequestPattern,
+                expectedFacts = newExpectedServerState
             )
         }
     }
 
     fun generateTestScenarios(
+        resolverStrategies: ResolverStrategies,
         variables: Map<String, String> = emptyMap(),
         testBaseURLs: Map<String, String> = emptyMap(),
-        enableGenerativeTesting: Boolean = false
     ): List<Scenario> {
         val referencesWithBaseURLs = references.mapValues { (_, reference) ->
             reference.copy(variables = variables, baseURLs = testBaseURLs)
@@ -348,15 +323,17 @@ data class Scenario(
                     }
                 }
             }.flatMap { row ->
-                newBasedOn(row, enableGenerativeTesting)
+                newBasedOn(row, resolverStrategies)
+            }.map {
+                it.copy(generativePrefix = resolverStrategies.generation.positivePrefix)
             }
         }
     }
 
     fun generateContractTests(
+        resolverStrategies: ResolverStrategies,
         variables: Map<String, String> = emptyMap(),
         testBaseURLs: Map<String, String> = emptyMap(),
-        generativeTestingEnabled: Boolean = false
     ): List<ContractTest> {
         val referencesWithBaseURLs = references.mapValues { (_, reference) ->
             reference.copy(variables = variables, baseURLs = testBaseURLs)
@@ -372,7 +349,7 @@ data class Scenario(
                 }
             }.flatMap { row ->
                 try {
-                    newBasedOn(row, generativeTestingEnabled).map { ScenarioTest(it, generativeTestingEnabled) }
+                    newBasedOn(row, resolverStrategies).map { ScenarioTest(it, resolverStrategies) }
                 } catch (e: Throwable) {
                     listOf(ScenarioTestGenerationFailure(this, e))
                 }
@@ -459,63 +436,30 @@ data class Scenario(
         val method = this.httpRequestPattern.method
         val path = this.httpRequestPattern.urlMatcher?.path ?: ""
         val responseStatus = this.httpResponsePattern.status
-        val exampleIdentifier = if(exampleName.isNullOrBlank()) "" else { " | ${exampleName.trim()}" }
+        val exampleIdentifier = if(exampleName.isNullOrBlank()) "" else { " | EX:${exampleName.trim()}" }
 
-        val generativePrefix = if(this.generativeTestingEnabled)
-            if(this.isNegative) "-ve " else "+ve "
-        else
-            ""
+        val generativePrefix = this.generativePrefix
 
         return "$generativePrefix Scenario: $method $path -> $responseStatus$exampleIdentifier"
     }
 
-    fun newBasedOn(scenario: Scenario): Scenario =
-        Scenario(
-            this.name,
-            this.httpRequestPattern,
-            this.httpResponsePattern,
-            this.expectedFacts,
-            scenario.examples,
-            this.patterns,
-            this.fixtures,
-            this.ignoreFailure,
-            scenario.references,
-            bindings,
-            isGherkinScenario,
-            isNegative,
-            sourceProvider = sourceProvider,
-            sourceRepository = sourceRepository,
-            sourceRepositoryBranch = sourceRepositoryBranch,
-            specification = specification,
-            serviceType = serviceType
+    fun newBasedOn(scenario: Scenario): Scenario {
+        return this.copy(
+            examples = scenario.examples,
+            references = scenario.references
         )
+    }
 
     fun newBasedOn(suggestions: List<Scenario>) =
         this.newBasedOn(suggestions.find { it.name == this.name } ?: this)
 
     fun isA2xxScenario(): Boolean = this.httpResponsePattern.status in 200..299
-    fun negativeBasedOn(badRequestOrDefault: BadRequestOrDefault?) = Scenario(
-        this.name,
-        this.httpRequestPattern,
-        this.httpResponsePattern,
-        this.expectedFacts,
-        this.examples,
-        this.patterns,
-        this.fixtures,
-        this.ignoreFailure,
-        this.references,
-        bindings,
-        this.isGherkinScenario,
-        isNegative = true,
-        badRequestOrDefault,
-        exampleName,
-        generativeTestingEnabled,
-        sourceProvider = sourceProvider,
-        sourceRepository = sourceRepository,
-        sourceRepositoryBranch = sourceRepositoryBranch,
-        specification = specification,
-        serviceType = serviceType
-    )
+    fun negativeBasedOn(badRequestOrDefault: BadRequestOrDefault?): Scenario {
+        return this.copy(
+            isNegative = true,
+            badRequestOrDefault = badRequestOrDefault
+        )
+    }
 }
 
 fun newExpectedServerStateBasedOn(
@@ -561,8 +505,8 @@ object ContractAndResponseMismatch : MismatchMessages {
     }
 }
 
-fun executeTest(testScenario: Scenario, testExecutor: TestExecutor): Result {
-    val request = testScenario.generateHttpRequest()
+fun executeTest(testScenario: Scenario, testExecutor: TestExecutor, resolverStrategies: ResolverStrategies = DefaultStrategies): Result {
+    val request = testScenario.generateHttpRequest(resolverStrategies)
 
     return try {
         testExecutor.setServerState(testScenario.serverState)

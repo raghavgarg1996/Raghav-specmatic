@@ -10,7 +10,6 @@ import `in`.specmatic.mock.DELAY_IN_SECONDS
 import `in`.specmatic.mock.ScenarioStub
 import `in`.specmatic.shouldMatch
 import `in`.specmatic.test.HttpClient
-import io.ktor.client.request.*
 import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
@@ -182,7 +181,7 @@ And response-body (string)
         val mock = ScenarioStub(request, HttpResponse(200, "done"))
 
         HttpStub(gherkin, listOf(mock)).use { fake ->
-            val postResponse = RestTemplate().postForEntity<String>(fake.endPoint + "/date", "2020-04-12T00:00:00")
+            val postResponse = RestTemplate().postForEntity<String>(fake.endPoint + "/date", "2020-04-12T00:00:00+05:00")
             assertThat(postResponse.statusCode.value()).isEqualTo(200)
             assertThat(postResponse.body).isEqualTo("done")
         }
@@ -204,7 +203,7 @@ And response-body (string)
 
         HttpStub(gherkin, listOf(mock)).use { fake ->
             val postResponse =
-                RestTemplate().postForEntity<String>(fake.endPoint + "/date", """{"date": "2020-04-12T00:00:00"}""")
+                RestTemplate().postForEntity<String>(fake.endPoint + "/date", """{"date": "2020-04-12T00:00:00+05:00"}""")
             assertThat(postResponse.statusCode.value()).isEqualTo(200)
             assertThat(postResponse.body).isEqualTo("done")
         }

@@ -127,7 +127,7 @@ internal class HttpRequestPatternTest {
 
     @Test
     fun `boolean bodies should match boolean strings`() {
-        val requestPattern = HttpRequestPattern(method = "GET", urlMatcher = toURLMatcherWithOptionalQueryParams("/"), body = BooleanPattern)
+        val requestPattern = HttpRequestPattern(method = "GET", urlMatcher = toURLMatcherWithOptionalQueryParams("/"), body = BooleanPattern())
         val request = HttpRequest("GET", path = "/", body = StringValue("true"))
 
         assertThat(requestPattern.matches(request, Resolver())).isInstanceOf(Success::class.java)
@@ -135,7 +135,7 @@ internal class HttpRequestPatternTest {
 
     @Test
     fun `boolean bodies should not match non-boolean strings`() {
-        val requestPattern = HttpRequestPattern(method = "GET", urlMatcher = toURLMatcherWithOptionalQueryParams("/"), body = BooleanPattern)
+        val requestPattern = HttpRequestPattern(method = "GET", urlMatcher = toURLMatcherWithOptionalQueryParams("/"), body = BooleanPattern())
         val request = HttpRequest("GET", path = "/", body = StringValue("10"))
 
         assertThat(requestPattern.matches(request, Resolver())).isInstanceOf(Failure::class.java)
@@ -423,7 +423,7 @@ internal class HttpRequestPatternTest {
         val pattern = HttpRequestPattern(method = "POST", urlMatcher = toURLMatcherWithOptionalQueryParams("http://helloworld.com/data"), body = JSONObjectPattern(mapOf("id" to NumberPattern())))
 
         val row = Row(listOf("(REQUEST-BODY)"), listOf("""{ "id": 10 }"""))
-        val patterns = pattern.newBasedOn(row, Resolver(generativeTestingEnabled = true))
+        val patterns = pattern.newBasedOn(row, Resolver(generation = GenerativeTestsEnabled()))
 
         assertThat(patterns).hasSize(1)
     }

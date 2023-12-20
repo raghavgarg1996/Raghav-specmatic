@@ -12,7 +12,8 @@ data class AnyPattern(
     override val pattern: List<Pattern>,
     val key: String? = null,
     override val typeAlias: String? = null,
-    val discriminatorKey: String? = null
+    val discriminatorKey: String? = null,
+    val example: String? = null
 ) : Pattern {
     override fun equals(other: Any?): Boolean = other is AnyPattern && other.pattern == this.pattern
 
@@ -59,9 +60,14 @@ data class AnyPattern(
 
         val failuresWithUpdatedBreadcrumbs = matchResults.map {
             Pair(it.pattern, it.result as Result.Failure)
-        }.map { (pattern, failure) ->
+        }.mapIndexed { index, (pattern, failure) ->
+            val ordinal = index + 1
+
             pattern.typeAlias?.let {
-                failure.breadCrumb("(~~~${withoutPatternDelimiters(it)} object)")
+                if(it.isBlank() || it == "()")
+                    failure.breadCrumb("(~~~object $ordinal)")
+                else
+                    failure.breadCrumb("(~~~${withoutPatternDelimiters(it)} object)")
             } ?:
             failure
         }
@@ -85,19 +91,27 @@ data class AnyPattern(
         if(discriminatorKey != null && resolver.discriminatorKey == null)
             return generate(resolver.copy(discriminatorKey = discriminatorKey))
 
+        return resolver.resolveExample(example, pattern) ?: generateRandomValue(resolver)
+    }
+
+    private fun generateRandomValue(resolver: Resolver): Value {
         val randomPattern = pattern.random()
-        val isNullable = pattern.any {it is NullPattern}
+        val isNullable = pattern.any { it is NullPattern }
         return resolver.withCyclePrevention(randomPattern, isNullable) { cyclePreventedResolver ->
             when (key) {
                 null -> randomPattern.generate(cyclePreventedResolver)
                 else -> cyclePreventedResolver.generate(key, randomPattern)
             }
-        }?: NullValue // Terminates cycle gracefully. Only happens if isNullable=true so that it is contract-valid.
+        } ?: NullValue // Terminates cycle gracefully. Only happens if isNullable=true so that it is contract-valid.
     }
 
     override fun newBasedOn(row: Row, resolver: Resolver): List<Pattern> {
         if(discriminatorKey != null && resolver.discriminatorKey == null)
             return this.newBasedOn(row, resolver.copy(discriminatorKey = discriminatorKey))
+
+        resolver.resolveExample(example, pattern)?.let {
+            return listOf(ExactValuePattern(it))
+        }
 
         val isNullable = pattern.any { it is NullPattern }
         val patternResults: List<Pair<List<Pattern>?, Throwable?>> =
@@ -235,6 +249,10 @@ data class AnyPattern(
             } else
                 "(${pattern.joinToString(" or ") { inner -> withoutPatternDelimiters(inner.typeName).let { if(it == "null") "\"null\"" else it}  }})"
         }
+
+    override fun toNullable(defaultValue: String?): Pattern {
+        return this
+    }
 }
 
 private fun failedToFindAny(expected: String, actual: Value?, results: List<Result.Failure>, mismatchMessages: MismatchMessages): Result.Failure =

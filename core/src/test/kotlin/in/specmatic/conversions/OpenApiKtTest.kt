@@ -4,17 +4,20 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.fasterxml.jackson.databind.ObjectMapper
+import `in`.specmatic.DefaultStrategies
 import `in`.specmatic.core.*
 import `in`.specmatic.core.HttpRequest
 import `in`.specmatic.core.log.Verbose
 import `in`.specmatic.core.log.logger
 import `in`.specmatic.core.pattern.ContractException
+import `in`.specmatic.core.pattern.JSONObjectPattern
 import `in`.specmatic.core.pattern.parsedJSONObject
 import `in`.specmatic.core.utilities.exceptionCauseMessage
 import `in`.specmatic.core.value.JSONObjectValue
 import `in`.specmatic.core.value.NumberValue
 import `in`.specmatic.core.value.StringValue
 import `in`.specmatic.core.value.Value
+import `in`.specmatic.jsonBody
 import `in`.specmatic.stub.HttpStub
 import `in`.specmatic.test.TestExecutor
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -399,7 +402,7 @@ Background:
         """.trimIndent(), sourceSpecPath
         )
 
-        val results = feature.copy(generativeTestingEnabled = true).executeTests(
+        val results = feature.enableGenerativeTesting().executeTests(
             object : TestExecutor {
                 override fun execute(request: HttpRequest): HttpResponse {
                     flags["${request.path} executed"] = true
@@ -452,10 +455,8 @@ Background:
         """.trimIndent(), sourceSpecPath
         )
 
-        val results = try {
-            System.setProperty(Flags.negativeTestingFlag, "true")
-
-            feature.copy(generativeTestingEnabled = true).executeTests(
+        val results =
+            feature.enableGenerativeTesting().executeTests(
                 object : TestExecutor {
                     override fun execute(request: HttpRequest): HttpResponse {
                         flags["${request.path} executed"] = true
@@ -477,12 +478,9 @@ Background:
                     }
                 }
             )
-        } finally {
-            System.clearProperty(Flags.negativeTestingFlag)
-        }
 
-        assertThat(results.results.size).isEqualTo(9)
-        assertThat(results.results.filterIsInstance<Result.Success>().size).isEqualTo(1)
+        assertThat(results.results.size).isEqualTo(13)
+        assertThat(results.results.filterIsInstance<Result.Success>().size).isEqualTo(5)
         assertThat(results.results.filterIsInstance<Result.Failure>().size).isEqualTo(8)
     }
 
@@ -507,7 +505,7 @@ Background:
         """.trimIndent(), sourceSpecPath
         )
 
-        val results = feature.copy(generativeTestingEnabled = true).executeTests(
+        val results = feature.enableGenerativeTesting().executeTests(
             object : TestExecutor {
                 override fun execute(request: HttpRequest): HttpResponse {
                     flags["${request.path} executed"] = true
@@ -526,9 +524,9 @@ Background:
             }
         )
 
-        assertThat(results.results.size).isEqualTo(16)
+        assertThat(results.results.size).isEqualTo(17)
         assertThat(results.results.filterIsInstance<Result.Success>().size).isEqualTo(4)
-        assertThat(results.results.filterIsInstance<Result.Failure>().size).isEqualTo(12)
+        assertThat(results.results.filterIsInstance<Result.Failure>().size).isEqualTo(13)
     }
 
     @Test
@@ -963,7 +961,6 @@ Background:
         assertThat(body).contains("Invalid pattern cycle")
     }
 
-    @Test
     @RepeatedTest(10) // Try to exercise all outcomes of AnyPattern.generate() which randomly selects from its options
     fun `should validate and generate with indirect optional non-nullable cyclic reference in open api`() {
         val feature = parseGherkinStringToFeature(
@@ -994,7 +991,6 @@ Background:
         assertThat(deserialized).isNotNull
     }
 
-    @Test
     @RepeatedTest(10) // Try to exercise all outcomes of AnyPattern.generate() which randomly selects from its options
     fun `should validate and generate with indirect nullable cyclic reference in open api`() {
         val feature = parseGherkinStringToFeature(
@@ -1025,7 +1021,6 @@ Background:
         assertThat(deserialized).isNotNull
     }
 
-    @Test
     @RepeatedTest(10) // Try to exercise all outcomes of AnyPattern.generate() which randomly selects from its options
     fun `should validate and generate with polymorphic cyclic reference in open api`() {
         val feature = OpenApiSpecification.fromFile("src/test/resources/openapi/circular-reference-polymorphic.yaml").toFeature()
@@ -1270,6 +1265,7 @@ Background:
                             )
 
                             "PATCH" -> {
+                                println(request.toLogString())
                                 HttpResponse(
                                     200,
                                     ObjectMapper().writeValueAsString(pet),
@@ -1388,7 +1384,7 @@ Background:
         """.trimIndent(), sourceSpecPath
         )
 
-        val results = feature.copy(generativeTestingEnabled = false).executeTests(
+        val results = feature.enableGenerativeTesting().executeTests(
             object : TestExecutor {
                 override fun execute(request: HttpRequest): HttpResponse {
                     val flagKey = "${request.path} ${request.method} executed"
@@ -1739,7 +1735,7 @@ Scenario: zero should return not found
 
         val queryParameters: MutableList<Map<String, String>> = mutableListOf()
 
-        val results = feature.copy(generativeTestingEnabled = true).executeTests(
+        val results = feature.enableGenerativeTesting().executeTests(
             object : TestExecutor {
                 override fun execute(request: HttpRequest): HttpResponse {
                     queryParameters.add(request.queryParams)
@@ -1799,28 +1795,22 @@ Scenario: zero should return not found
 
         val feature = parseGherkinStringToFeature(openAPISpec, sourceSpecPath)
 
-        try {
-            System.setProperty(Flags.negativeTestingFlag, "true")
+        val results: Results = feature.enableGenerativeTesting().executeTests(object : TestExecutor {
+            override fun execute(request: HttpRequest): HttpResponse {
+                val jsonBody = request.body as JSONObjectValue
+                if (jsonBody.jsonObject["id"]?.toStringLiteral()?.toIntOrNull() != null)
+                    return HttpResponse(200, body = StringValue("it worked"))
 
-            val results: Results = feature.copy(generativeTestingEnabled = true).executeTests(object : TestExecutor {
-                override fun execute(request: HttpRequest): HttpResponse {
-                    val jsonBody = request.body as JSONObjectValue
-                    if (jsonBody.jsonObject["id"]?.toStringLiteral()?.toIntOrNull() != null)
-                        return HttpResponse(200, body = StringValue("it worked"))
+                return HttpResponse(400, body = parsedJSONObject("""{"data": "information"}"""))
+            }
 
-                    return HttpResponse(400, body = parsedJSONObject("""{"data": "information"}"""))
-                }
+            override fun setServerState(serverState: Map<String, Value>) {
+            }
+        })
 
-                override fun setServerState(serverState: Map<String, Value>) {
-                }
-            })
+        println(results.report())
 
-            println(results.report())
-
-            assertThat(results.success()).isTrue
-        } finally {
-            System.clearProperty(Flags.negativeTestingFlag)
-        }
+        assertThat(results.success()).isTrue
     }
 
     @Test
@@ -1950,25 +1940,21 @@ components:
 
         var contractInvalidValueReceived = false
 
-        try {
-            contract.executeTests(object : TestExecutor {
-                override fun execute(request: HttpRequest): HttpResponse {
-                    val jsonBody = request.body as JSONObjectValue
+        contract.executeTests(object : TestExecutor {
+            override fun execute(request: HttpRequest): HttpResponse {
+                val jsonBody = request.body as JSONObjectValue
 
-                    if (jsonBody.jsonObject["name"] is NumberValue)
-                        contractInvalidValueReceived = true
+                if (jsonBody.jsonObject["name"] is NumberValue)
+                    contractInvalidValueReceived = true
 
-                    return HttpResponse(400, body = parsedJSONObject("""{"message": "invalid request"}"""))
-                }
+                return HttpResponse(400, body = parsedJSONObject("""{"message": "invalid request"}"""))
+            }
 
-                override fun setServerState(serverState: Map<String, Value>) {
-                }
-            })
+            override fun setServerState(serverState: Map<String, Value>) {
+            }
+        })
 
-            assertThat(contractInvalidValueReceived).isTrue
-        } finally {
-            System.clearProperty(Flags.negativeTestingFlag)
-        }
+        assertThat(contractInvalidValueReceived).isTrue
     }
 
     @Test
@@ -2069,25 +2055,21 @@ components:
 
         var contractInvalidValueReceived = false
 
-        try {
-            contract.executeTests(object : TestExecutor {
-                override fun execute(request: HttpRequest): HttpResponse {
-                    val dataHeaderValue: String? = request.headers["data"]
+        contract.executeTests(object : TestExecutor {
+            override fun execute(request: HttpRequest): HttpResponse {
+                val dataHeaderValue: String? = request.headers["data"]
 
-                    if (dataHeaderValue == "hello")
-                        contractInvalidValueReceived = true
+                if (dataHeaderValue == "hello")
+                    contractInvalidValueReceived = true
 
-                    return HttpResponse(400, body = parsedJSONObject("""{"message": "invalid request"}"""))
-                }
+                return HttpResponse(400, body = parsedJSONObject("""{"message": "invalid request"}"""))
+            }
 
-                override fun setServerState(serverState: Map<String, Value>) {
-                }
-            })
+            override fun setServerState(serverState: Map<String, Value>) {
+            }
+        })
 
-            assertThat(contractInvalidValueReceived).isTrue
-        } finally {
-            System.clearProperty(Flags.negativeTestingFlag)
-        }
+        assertThat(contractInvalidValueReceived).isTrue
     }
 
     @Test
@@ -2173,25 +2155,21 @@ components:
 
         var contractInvalidValueReceived = false
 
-        try {
-            contract.executeTests(object : TestExecutor {
-                override fun execute(request: HttpRequest): HttpResponse {
-                    val dataHeaderValue: String? = request.queryParams["data"]
+        contract.executeTests(object : TestExecutor {
+            override fun execute(request: HttpRequest): HttpResponse {
+                val dataHeaderValue: String? = request.queryParams["data"]
 
-                    if (dataHeaderValue == "hello")
-                        contractInvalidValueReceived = true
+                if (dataHeaderValue == "hello")
+                    contractInvalidValueReceived = true
 
-                    return HttpResponse(400, body = parsedJSONObject("""{"message": "invalid request"}"""))
-                }
+                return HttpResponse(400, body = parsedJSONObject("""{"message": "invalid request"}"""))
+            }
 
-                override fun setServerState(serverState: Map<String, Value>) {
-                }
-            })
+            override fun setServerState(serverState: Map<String, Value>) {
+            }
+        })
 
-            assertThat(contractInvalidValueReceived).isTrue
-        } finally {
-            System.clearProperty(Flags.negativeTestingFlag)
-        }
+        assertThat(contractInvalidValueReceived).isTrue
     }
 
     @Test
@@ -2278,28 +2256,22 @@ components:
 
         val feature = parseGherkinStringToFeature(openAPISpec, sourceSpecPath)
 
-        try {
-            System.setProperty(Flags.negativeTestingFlag, "true")
+        val results: Results = feature.enableGenerativeTesting().executeTests(object : TestExecutor {
+            override fun execute(request: HttpRequest): HttpResponse {
+                val jsonBody = request.body as JSONObjectValue
+                if (jsonBody.jsonObject["id"]?.toStringLiteral()?.toIntOrNull() != null)
+                    return HttpResponse(200, body = StringValue("it worked"))
 
-            val results: Results = feature.copy(generativeTestingEnabled = true).executeTests(object : TestExecutor {
-                override fun execute(request: HttpRequest): HttpResponse {
-                    val jsonBody = request.body as JSONObjectValue
-                    if (jsonBody.jsonObject["id"]?.toStringLiteral()?.toIntOrNull() != null)
-                        return HttpResponse(200, body = StringValue("it worked"))
+                return HttpResponse(400, body = parsedJSONObject("""{"error_in_400": "message"}"""))
+            }
 
-                    return HttpResponse(400, body = parsedJSONObject("""{"error_in_400": "message"}"""))
-                }
+            override fun setServerState(serverState: Map<String, Value>) {
+            }
+        })
 
-                override fun setServerState(serverState: Map<String, Value>) {
-                }
-            })
+        println(results.report())
 
-            println(results.report())
-
-            assertThat(results.success()).isTrue
-        } finally {
-            System.clearProperty(Flags.negativeTestingFlag)
-        }
+        assertThat(results.success()).isTrue
     }
 
     @Test
@@ -2395,6 +2367,7 @@ components:
         })
     }
 
+    @Test
     fun `should preserve trailing slash`() {
         val contract = OpenApiSpecification.fromYAML(
             """
@@ -2480,6 +2453,71 @@ components:
         assertThat(paths).allSatisfy {
             assertThat(it).endsWith("/")
         }
+    }
+
+    @Test
+    fun `should load an inline example in the schema when generating`() {
+        val contract = OpenApiSpecification.fromYAML(
+            """
+    openapi: "3.0.3"
+    info:
+      version: 1.0.0
+      title: Petstore
+      description: A sample API that uses a petstore as an example to demonstrate features in the OpenAPI 3.0 specification
+      license:
+        name: Apache 2.0
+        url: https://www.apache.org/licenses/LICENSE-2.0.html
+    paths:
+      /pets/:
+        post:
+          summary: create a pet
+          description: Creates a new pet in the store. Duplicates are allowed
+          operationId: addPet
+          requestBody:
+            description: Pet to add to the store
+            required: true
+            content:
+              application/json:
+                schema:
+                  type: object
+                  required:
+                    - name
+                  properties:
+                    name:
+                      type: string
+                      example: 'Archie'
+          responses:
+            '200':
+              description: new pet record
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    required:
+                      - id
+                    properties:
+                      id:
+                        type: integer
+                  examples:
+                    SUCCESS:
+                      value:
+                        id: 10
+""".trimIndent(), ""
+        ).toFeature()
+
+        val result = contract.executeTests(object : TestExecutor {
+            override fun execute(request: HttpRequest): HttpResponse {
+                assertThat(request.jsonBody.findFirstChildByName("name")?.toStringLiteral()).isEqualTo("Archie")
+
+                return HttpResponse.OK
+            }
+
+            override fun setServerState(serverState: Map<String, Value>) {
+
+            }
+        })
+
+        assertThat(result.results).isNotEmpty
     }
 }
 
