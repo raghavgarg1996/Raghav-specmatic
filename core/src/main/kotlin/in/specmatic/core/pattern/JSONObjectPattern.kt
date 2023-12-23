@@ -50,50 +50,25 @@ data class JSONObjectPattern(override val pattern: Map<String, Pattern> = emptyM
     }
 
     override fun encompasses(_otherPattern: Pattern, thisResolver: Resolver, otherResolver: Resolver, typeStack: TypeStack): Result {
-        if(thisResolver.discriminatorKey != null) {
-            return if(canUseDiscriminator(thisResolver)) {
-                val updatedPattern =
-                    updateWithDiscriminator(pattern, thisResolver.discriminatorKey!!, thisResolver.discriminatorValue)
-                updatedPattern.encompasses(
-                    _otherPattern,
-                    thisResolver.copy(discriminatorKey = null, discriminatorValue = null),
-                    otherResolver,
-                    typeStack
-                )
-            } else
-                this.encompasses(_otherPattern, thisResolver.copy(discriminatorKey = null), otherResolver, typeStack)
-        }
-
         val otherPattern = resolvedHop(_otherPattern, otherResolver)
 
-        if(otherResolver.discriminatorKey != null) {
-            return if (canUseDiscriminator(otherResolver) && otherPattern is JSONObjectPattern) {
-                val updatedPattern = updateWithDiscriminator(
-                    otherPattern.pattern,
-                    otherResolver.discriminatorKey!!,
-                    otherResolver.discriminatorValue
-                )
-                updatedPattern.encompasses(
-                    updatedPattern,
-                    thisResolver,
-                    otherResolver.copy(discriminatorKey = null, discriminatorValue = null),
-                    typeStack
-                )
-            } else
-                this.encompasses(_otherPattern, thisResolver, otherResolver.copy(discriminatorKey = null), typeStack)
-        }
+        val discriminatedThisPattern = thisResolver.discriminator.discriminate(pattern)
+        val undiscriminatedThisResolver = thisResolver.dropDiscriminator()
 
-        val thisResolverWithNullType = withNullPattern(thisResolver)
+        val thisResolverWithNullType = withNullPattern(undiscriminatedThisResolver)
         val otherResolverWithNullType = withNullPattern(otherResolver)
 
         return when (otherPattern) {
-            is ExactValuePattern -> otherPattern.fitsWithin(listOf(this), otherResolverWithNullType, thisResolverWithNullType, typeStack)
+            is ExactValuePattern -> otherPattern.fitsWithin(listOf(this.copy(pattern = discriminatedThisPattern)), otherResolverWithNullType, thisResolverWithNullType, typeStack)
             is TabularPattern -> {
                 mapEncompassesMap(pattern, otherPattern.pattern, thisResolverWithNullType, otherResolverWithNullType, typeStack)
             }
             is JSONObjectPattern -> {
+                val discriminatedOtherPattern = otherResolverWithNullType.discriminator.discriminate(otherPattern.pattern)
+                val undiscriminatedOtherResolver = otherResolverWithNullType.dropDiscriminator()
+
                 val propertyLimitResults: List<Result.Failure> = olderPropertyLimitsEncompassNewer(this, otherPattern)
-                mapEncompassesMap(pattern, otherPattern.pattern, thisResolverWithNullType, otherResolverWithNullType, typeStack, propertyLimitResults)
+                mapEncompassesMap(discriminatedThisPattern, discriminatedOtherPattern, thisResolverWithNullType, undiscriminatedOtherResolver, typeStack, propertyLimitResults)
             }
             else -> Result.Failure("Expected json type, got ${otherPattern.typeName}")
         }
@@ -133,16 +108,12 @@ data class JSONObjectPattern(override val pattern: Map<String, Pattern> = emptyM
         if (sampleData !is JSONObjectValue)
             return mismatchResult("JSON object", sampleData, resolver.mismatchMessages)
 
-        if(resolver.discriminatorKey != null) {
-            return if (canUseDiscriminator(resolver)) {
-                val updatedPattern =
-                    updateWithDiscriminator(pattern, resolver.discriminatorKey!!, resolver.discriminatorValue)
-                updatedPattern.matches(sampleData, resolver.copy(discriminatorKey = null, discriminatorValue = null))
-            } else
-                this.matches(sampleData, resolver.copy(discriminatorKey = null))
+        resolver.discriminator.matches(sampleData).let {
+            if(! it.isSuccess())
+                return it
         }
 
-        val resolverWithNullType = withNullPattern(resolver.copy(discriminatorKey = null))
+        val resolverWithNullType = withNullPattern(resolver).dropDiscriminator()
 
         val minCountErrors: List<Result.Failure> = if(sampleData.jsonObject.keys.size < (minProperties ?: 0))
             listOf(Result.Failure("Expected at least $minProperties properties, got ${sampleData.jsonObject.keys.size}"))
@@ -170,67 +141,32 @@ data class JSONObjectPattern(override val pattern: Map<String, Pattern> = emptyM
             Result.Failure.fromFailures(failures)
     }
 
-    private fun canUseDiscriminator(resolver: Resolver) =
-        resolver.discriminatorKey != null && resolver.discriminatorValue != null &&
-                (resolver.discriminatorKey in pattern || "${resolver.discriminatorKey}?" in pattern)
-
-    private fun updateWithDiscriminator(
-        pattern: Map<String, Pattern>,
-        discriminatorKey: String,
-        discriminatorValue: String?
-    ): JSONObjectPattern {
-        return pattern.minus(discriminatorKey).minus("$discriminatorKey?").let {
-            (discriminatorValue ?: this.typeAlias)?.let { _discriminatorValue ->
-                this.copy(pattern = it.plus(discriminatorKey to ExactValuePattern(StringValue(_discriminatorValue.removeSurrounding("(", ")")))))
-            } ?: this
-        }
-    }
-
     override fun generate(resolver: Resolver): JSONObjectValue {
-        if(resolver.discriminatorKey != null) {
-            return if (canUseDiscriminator(resolver)) {
-                val updatedPattern =
-                    updateWithDiscriminator(pattern, resolver.discriminatorKey!!, resolver.discriminatorValue)
-                updatedPattern.generate(resolver.copy(discriminatorKey = null, discriminatorValue = null))
-            } else
-                this.generate(resolver.copy(discriminatorKey = null))
-        }
+        val discriminatedPattern = resolver.discriminator.discriminate(pattern)
+        val undiscriminatedResolver = resolver.dropDiscriminator()
 
-        return selectPropertiesWithinMaxAndMin(pattern, minProperties, maxProperties).let {
-            JSONObjectValue(generate(it, withNullPattern(resolver)))
+        return selectPropertiesWithinMaxAndMin(discriminatedPattern, minProperties, maxProperties).let {
+            JSONObjectValue(generate(it, withNullPattern(undiscriminatedResolver)))
         }
     }
 
     override fun newBasedOn(row: Row, resolver: Resolver): List<JSONObjectPattern> {
-        if(resolver.discriminatorKey != null) {
-            return if (canUseDiscriminator(resolver)) {
-                val updatedPattern =
-                    updateWithDiscriminator(pattern, resolver.discriminatorKey!!, resolver.discriminatorValue)
-                updatedPattern.newBasedOn(row, resolver.copy(discriminatorKey = null, discriminatorValue = null))
-            } else {
-                this.newBasedOn(row, resolver.copy(discriminatorKey = null))
-            }
-        }
+        val discriminatedPattern = resolver.discriminator.discriminate(pattern)
+        val undiscriminatedResolver = resolver.dropDiscriminator()
 
-        return allOrNothingCombinationIn(pattern.minus("..."), resolver.resolveRow(row), minProperties, maxProperties) { pattern ->
-            newBasedOn(pattern, row, withNullPattern(resolver))
+        return allOrNothingCombinationIn(discriminatedPattern.minus("..."), undiscriminatedResolver.resolveRow(row), minProperties, maxProperties) { pattern ->
+            newBasedOn(pattern, row, withNullPattern(undiscriminatedResolver))
         }.map { toJSONObjectPattern(it.mapKeys { (key, _) ->
             withoutOptionality(key)
         }) }
     }
 
     override fun newBasedOn(resolver: Resolver): List<JSONObjectPattern> {
-        if(resolver.discriminatorKey != null) {
-            return if (canUseDiscriminator(resolver)) {
-                val updatedPattern =
-                    updateWithDiscriminator(pattern, resolver.discriminatorKey!!, resolver.discriminatorValue)
-                updatedPattern.newBasedOn(resolver.copy(discriminatorKey = null, discriminatorValue = null))
-            } else
-                this.newBasedOn(resolver.copy(discriminatorKey = null))
-        }
+        val discriminatedPattern = resolver.discriminator.discriminate(pattern)
+        val undiscriminatedResolver = resolver.dropDiscriminator()
 
-        return allOrNothingCombinationIn(pattern.minus("...")) { pattern ->
-            newBasedOn(pattern, withNullPattern(resolver))
+        return allOrNothingCombinationIn(discriminatedPattern.minus("...")) { pattern ->
+            newBasedOn(pattern, withNullPattern(undiscriminatedResolver))
         }.map { toJSONObjectPattern(it) }
     }
 

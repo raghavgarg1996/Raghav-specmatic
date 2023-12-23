@@ -4,15 +4,16 @@ import `in`.specmatic.core.MismatchMessages
 import `in`.specmatic.core.Resolver
 import `in`.specmatic.core.Result
 import `in`.specmatic.core.mismatchResult
-import `in`.specmatic.core.value.*
-
-data class PatternMatchResult(val pattern: Pattern, val result: Result)
+import `in`.specmatic.core.value.JSONObjectValue
+import `in`.specmatic.core.value.NullValue
+import `in`.specmatic.core.value.ScalarValue
+import `in`.specmatic.core.value.Value
 
 data class AnyPattern(
     override val pattern: List<Pattern>,
     val key: String? = null,
     override val typeAlias: String? = null,
-    val discriminatorKey: String? = null,
+    val discriminatorBuilder: DiscriminatorBuilder = NoDiscriminatorBuilder(),
     val example: String? = null
 ) : Pattern {
     override fun equals(other: Any?): Boolean = other is AnyPattern && other.pattern == this.pattern
@@ -20,11 +21,7 @@ data class AnyPattern(
     override fun hashCode(): Int = pattern.hashCode()
 
     override fun matchPatternKeys(sampleData: JSONObjectValue, resolver: Resolver): Pair<Result, List<String>> {
-        val _resolver = resolver.copy(discriminatorKey = discriminatorKey)
-
-        return pattern.map {
-            it.matchPatternKeys(sampleData, _resolver)
-        }.let { results ->
+        return discriminatorBuilder.matchPatternKeys(this, resolver, sampleData).let { results ->
             val successes = results.filter { it.first is Result.Success }
 
             if(successes.size == 1)
@@ -37,25 +34,22 @@ data class AnyPattern(
     }
 
     override fun matches(sampleData: Value?, resolver: Resolver): Result {
-        val _resolver = resolver.copy(discriminatorKey = discriminatorKey)
-
-        val matchResults = pattern.map {
-            PatternMatchResult(it, _resolver.matchesPattern(key, it, sampleData ?: EmptyString))
-        }
+        val matchResults = discriminatorBuilder.patternMatchResults(this, key, resolver, sampleData)
 
         val matchResult = matchResults.find { it.result is Result.Success }
 
         if(matchResult != null)
             return matchResult.result
 
-        val resolvedPatterns = pattern.map { resolvedHop(it, _resolver) }
+        val resolvedPatterns =
+            pattern.map { discriminatorBuilder.resolvePattern(it, resolver) }
 
         if(resolvedPatterns.any { it is NullPattern } || resolvedPatterns.all { it is ExactValuePattern })
             return failedToFindAny(
                     typeName,
                     sampleData,
                     getResult(matchResults.map { it.result as Result.Failure }),
-                    _resolver.mismatchMessages
+                    resolver.mismatchMessages
                 )
 
         val failuresWithUpdatedBreadcrumbs = matchResults.map {
@@ -88,16 +82,17 @@ data class AnyPattern(
     private fun isEmpty(it: Pattern) = it.typeAlias == "(empty)" || it is NullPattern
 
     override fun generate(resolver: Resolver): Value {
-        if(discriminatorKey != null && resolver.discriminatorKey == null)
-            return generate(resolver.copy(discriminatorKey = discriminatorKey))
-
         return resolver.resolveExample(example, pattern) ?: generateRandomValue(resolver)
     }
 
     private fun generateRandomValue(resolver: Resolver): Value {
         val randomPattern = pattern.random()
         val isNullable = pattern.any { it is NullPattern }
-        return resolver.withCyclePrevention(randomPattern, isNullable) { cyclePreventedResolver ->
+
+        val discriminatedResolver = discriminatorBuilder.discriminatedResolver(randomPattern.typeAlias, resolver)
+
+
+        return discriminatedResolver.withCyclePrevention(randomPattern, isNullable) { cyclePreventedResolver ->
             when (key) {
                 null -> randomPattern.generate(cyclePreventedResolver)
                 else -> cyclePreventedResolver.generate(key, randomPattern)
@@ -106,9 +101,6 @@ data class AnyPattern(
     }
 
     override fun newBasedOn(row: Row, resolver: Resolver): List<Pattern> {
-        if(discriminatorKey != null && resolver.discriminatorKey == null)
-            return this.newBasedOn(row, resolver.copy(discriminatorKey = discriminatorKey))
-
         resolver.resolveExample(example, pattern)?.let {
             return listOf(ExactValuePattern(it))
         }
@@ -116,9 +108,11 @@ data class AnyPattern(
         val isNullable = pattern.any { it is NullPattern }
         val patternResults: List<Pair<List<Pattern>?, Throwable?>> =
             pattern.sortedBy { it is NullPattern }.map { innerPattern ->
+                val discriminatedResolver = discriminatorBuilder.discriminatedResolver(innerPattern.typeAlias, resolver)
+
                 try {
                     val patterns =
-                        resolver.withCyclePrevention(innerPattern, isNullable) { cyclePreventedResolver ->
+                        discriminatedResolver.withCyclePrevention(innerPattern, isNullable) { cyclePreventedResolver ->
                             innerPattern.newBasedOn(row, cyclePreventedResolver)
                         } ?: listOf()
                     Pair(patterns, null)
@@ -151,9 +145,6 @@ data class AnyPattern(
     }
 
     override fun newBasedOn(resolver: Resolver): List<Pattern> {
-        if(discriminatorKey != null && resolver.discriminatorKey == null)
-            return this.newBasedOn(resolver.copy(discriminatorKey = discriminatorKey))
-
         val isNullable = pattern.any {it is NullPattern}
         return pattern.flatMap { innerPattern ->
             resolver.withCyclePrevention(innerPattern, isNullable) { cyclePreventedResolver ->
@@ -219,9 +210,6 @@ data class AnyPattern(
         otherResolver: Resolver,
         typeStack: TypeStack
     ): Result {
-        if(discriminatorKey != null && thisResolver.discriminatorKey == null)
-            return this.encompasses(otherPattern, thisResolver.copy(discriminatorKey = discriminatorKey), otherResolver.copy(discriminatorKey = discriminatorKey), typeStack)
-
         val compatibleResult = otherPattern.fitsWithin(patternSet(thisResolver), otherResolver, thisResolver, typeStack)
 
         return if(compatibleResult is Result.Failure && allValuesAreScalar())
@@ -254,6 +242,7 @@ data class AnyPattern(
         return this
     }
 }
+
 
 private fun failedToFindAny(expected: String, actual: Value?, results: List<Result.Failure>, mismatchMessages: MismatchMessages): Result.Failure =
     when (results.size) {

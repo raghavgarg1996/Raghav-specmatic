@@ -13,10 +13,6 @@ data class AllOfPattern(
     override fun hashCode(): Int = pattern.hashCode()
 
     override fun matchPatternKeys(sampleData: JSONObjectValue, resolver: Resolver): Pair<Result, List<String>> {
-        if(resolver.discriminatorKey != null && resolver.discriminatorValue == null && typeAlias != null) {
-            return this.matchPatternKeys(sampleData, resolver.copy(discriminatorValue = typeAlias))
-        }
-
         val (keysMatched, results) = pattern.foldRight(Pair(emptySet<String>(), emptyList<Result>())) { type, acc ->
             val (keysMatchedSoFar, resultsSoFar) = acc
             val (result, keysMatched) = type.matchPatternKeys(sampleData, resolver)
@@ -32,10 +28,6 @@ data class AllOfPattern(
     }
 
     override fun matches(sampleData: Value?, resolver: Resolver): Result {
-        if(resolver.discriminatorKey != null && resolver.discriminatorValue == null && typeAlias != null) {
-            return this.matches(sampleData, resolver.copy(discriminatorValue = typeAlias))
-        }
-
         if(pattern.isEmpty())
             return Result.Failure("allOf specified with no schemas")
 
@@ -70,10 +62,6 @@ data class AllOfPattern(
     }
 
     override fun generate(resolver: Resolver): Value {
-        if(resolver.discriminatorKey != null && resolver.discriminatorValue == null && typeAlias != null) {
-            return this.generate(resolver.copy(discriminatorValue = typeAlias))
-        }
-
         return mergedPattern(resolver).generate(resolver)
     }
 
@@ -86,18 +74,10 @@ data class AllOfPattern(
     }
 
     override fun newBasedOn(row: Row, resolver: Resolver): List<Pattern> {
-        if(resolver.discriminatorKey != null && resolver.discriminatorValue == null && typeAlias != null) {
-            return this.newBasedOn(row, resolver.copy(discriminatorValue = typeAlias))
-        }
-
         return mergedPattern(resolver).newBasedOn(row, resolver)
     }
 
     override fun newBasedOn(resolver: Resolver): List<Pattern> {
-        if(resolver.discriminatorKey != null && resolver.discriminatorValue == null && typeAlias != null) {
-            return this.newBasedOn(resolver.copy(discriminatorValue = typeAlias))
-        }
-
         return mergedPattern(resolver).newBasedOn(resolver)
     }
 
@@ -118,14 +98,6 @@ data class AllOfPattern(
         otherResolver: Resolver,
         typeStack: TypeStack
     ): Result {
-        if(thisResolver.discriminatorKey != null && thisResolver.discriminatorValue == null && typeAlias != null) {
-            return this.encompasses(otherPattern, thisResolver.copy(discriminatorValue = typeAlias), otherResolver, typeStack)
-        }
-
-        if(otherResolver.discriminatorKey != null && otherResolver.discriminatorValue == null && typeAlias != null) {
-            return this.encompasses(otherPattern, thisResolver, otherResolver.copy(discriminatorValue = typeAlias), typeStack)
-        }
-
         return mergedPattern(thisResolver).encompasses(otherPattern, thisResolver, otherResolver, typeStack)
     }
 

@@ -895,7 +895,7 @@ class OpenApiSpecification(private val openApiFile: String, val openApi: OpenAPI
 
                     val discriminatorKey: String? = schema.discriminator?.propertyName
 
-                    AnyPattern(candidatePatterns.plus(nullable), discriminatorKey = discriminatorKey)
+                    AnyPattern(candidatePatterns.plus(nullable), discriminatorBuilder = discriminatorKey?.let { DiscriminatedBuilder(it) } ?: NoDiscriminatorBuilder())
                 } else if (schema.anyOf != null) {
                     throw UnsupportedOperationException("Specmatic does not support anyOf")
                 } else {
