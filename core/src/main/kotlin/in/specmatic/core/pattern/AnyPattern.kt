@@ -13,7 +13,7 @@ data class AnyPattern(
     override val pattern: List<Pattern>,
     val key: String? = null,
     override val typeAlias: String? = null,
-    val discriminatorBuilder: DiscriminatorBuilder = NoDiscriminatorBuilder(),
+    val discriminator: Discriminator = NoDiscriminator,
     val example: String? = null
 ) : Pattern {
     override fun equals(other: Any?): Boolean = other is AnyPattern && other.pattern == this.pattern
@@ -21,7 +21,7 @@ data class AnyPattern(
     override fun hashCode(): Int = pattern.hashCode()
 
     override fun matchPatternKeys(sampleData: JSONObjectValue, resolver: Resolver): Pair<Result, List<String>> {
-        return discriminatorBuilder.matchPatternKeys(this, resolver, sampleData).let { results ->
+        return discriminator.matchPatternKeys(this, resolver, sampleData).let { results ->
             val successes = results.filter { it.first is Result.Success }
 
             if(successes.size == 1)
@@ -34,7 +34,7 @@ data class AnyPattern(
     }
 
     override fun matches(sampleData: Value?, resolver: Resolver): Result {
-        val matchResults = discriminatorBuilder.patternMatchResults(this, key, resolver, sampleData)
+        val matchResults = discriminator.patternMatchResults(this, key, resolver, sampleData)
 
         val matchResult = matchResults.find { it.result is Result.Success }
 
@@ -42,7 +42,7 @@ data class AnyPattern(
             return matchResult.result
 
         val resolvedPatterns =
-            pattern.map { discriminatorBuilder.resolvePattern(it, resolver) }
+            pattern.map { discriminator.resolvePattern(it, resolver) }
 
         if(resolvedPatterns.any { it is NullPattern } || resolvedPatterns.all { it is ExactValuePattern })
             return failedToFindAny(
@@ -89,7 +89,7 @@ data class AnyPattern(
         val randomPattern = pattern.random()
         val isNullable = pattern.any { it is NullPattern }
 
-        val discriminatedResolver = discriminatorBuilder.discriminatedResolver(randomPattern.typeAlias, resolver)
+        val discriminatedResolver = discriminator.discriminatedResolver(randomPattern.typeAlias, resolver)
 
 
         return discriminatedResolver.withCyclePrevention(randomPattern, isNullable) { cyclePreventedResolver ->
@@ -108,7 +108,7 @@ data class AnyPattern(
         val isNullable = pattern.any { it is NullPattern }
         val patternResults: List<Pair<List<Pattern>?, Throwable?>> =
             pattern.sortedBy { it is NullPattern }.map { innerPattern ->
-                val discriminatedResolver = discriminatorBuilder.discriminatedResolver(innerPattern.typeAlias, resolver)
+                val discriminatedResolver = discriminator.discriminatedResolver(innerPattern.typeAlias, resolver)
 
                 try {
                     val patterns =

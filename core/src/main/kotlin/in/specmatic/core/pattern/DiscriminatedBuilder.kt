@@ -1,13 +1,13 @@
 package `in`.specmatic.core.pattern
 
-import `in`.specmatic.core.Discriminated
+import `in`.specmatic.core.DiscriminatorKeyValuePair
 import `in`.specmatic.core.Resolver
 import `in`.specmatic.core.Result
 import `in`.specmatic.core.value.EmptyString
 import `in`.specmatic.core.value.JSONObjectValue
 import `in`.specmatic.core.value.Value
 
-data class DiscriminatedBuilder(val discriminatorKey: String) : DiscriminatorBuilder {
+data class DiscriminatedBuilder(val discriminatorKey: String) : Discriminator {
     override fun resolvePattern(
         pattern: Pattern,
         resolver: Resolver
@@ -18,7 +18,7 @@ data class DiscriminatedBuilder(val discriminatorKey: String) : DiscriminatorBui
         )
 
         val discriminatedResolver = resolver.copy(
-            discriminator = Discriminated(discriminatorKey, discriminatorValue)
+            discrimination = DiscriminatorKeyValuePair(discriminatorKey, discriminatorValue)
         )
 
         return resolvedHop(pattern, discriminatedResolver)
@@ -26,7 +26,7 @@ data class DiscriminatedBuilder(val discriminatorKey: String) : DiscriminatorBui
 
     override fun discriminatedResolver(typeAlias: String?, resolver: Resolver): Resolver {
         return typeAlias?.let {
-            resolver.copy(discriminator = Discriminated(discriminatorKey, it))
+            resolver.copy(discrimination = DiscriminatorKeyValuePair(discriminatorKey, it))
         } ?: resolver
     }
 
@@ -42,7 +42,7 @@ data class DiscriminatedBuilder(val discriminatorKey: String) : DiscriminatorBui
             )
 
             val discriminatedResolver = resolver.copy(
-                discriminator = Discriminated(discriminatorKey, discriminatorValue)
+                discrimination = DiscriminatorKeyValuePair(discriminatorKey, discriminatorValue)
             )
 
             it.matchPatternKeys(sampleData, discriminatedResolver)
@@ -61,7 +61,7 @@ data class DiscriminatedBuilder(val discriminatorKey: String) : DiscriminatorBui
         )
 
         val discriminatedResolver = resolver.copy(
-            discriminator = Discriminated(discriminatorKey, discriminatorValue)
+            discrimination = DiscriminatorKeyValuePair(discriminatorKey, discriminatorValue)
         )
 
         PatternMatchResult(it, discriminatedResolver.matchesPattern(key, it, sampleData ?: EmptyString))

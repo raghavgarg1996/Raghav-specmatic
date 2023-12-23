@@ -5,7 +5,7 @@ import `in`.specmatic.core.Result
 import `in`.specmatic.core.value.JSONObjectValue
 import `in`.specmatic.core.value.Value
 
-interface DiscriminatorBuilder {
+interface Discriminator {
     fun matchPatternKeys(
         anyPattern: AnyPattern,
         resolver: Resolver,

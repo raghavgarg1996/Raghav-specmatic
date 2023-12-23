@@ -6,7 +6,6 @@ import `in`.specmatic.core.utilities.stringToPatternMap
 import `in`.specmatic.core.utilities.withNullPattern
 import `in`.specmatic.core.value.JSONArrayValue
 import `in`.specmatic.core.value.JSONObjectValue
-import `in`.specmatic.core.value.StringValue
 import `in`.specmatic.core.value.Value
 import java.util.Optional
 
@@ -52,7 +51,7 @@ data class JSONObjectPattern(override val pattern: Map<String, Pattern> = emptyM
     override fun encompasses(_otherPattern: Pattern, thisResolver: Resolver, otherResolver: Resolver, typeStack: TypeStack): Result {
         val otherPattern = resolvedHop(_otherPattern, otherResolver)
 
-        val discriminatedThisPattern = thisResolver.discriminator.discriminate(pattern)
+        val discriminatedThisPattern = thisResolver.discrimination.apply(pattern)
         val undiscriminatedThisResolver = thisResolver.dropDiscriminator()
 
         val thisResolverWithNullType = withNullPattern(undiscriminatedThisResolver)
@@ -64,7 +63,7 @@ data class JSONObjectPattern(override val pattern: Map<String, Pattern> = emptyM
                 mapEncompassesMap(pattern, otherPattern.pattern, thisResolverWithNullType, otherResolverWithNullType, typeStack)
             }
             is JSONObjectPattern -> {
-                val discriminatedOtherPattern = otherResolverWithNullType.discriminator.discriminate(otherPattern.pattern)
+                val discriminatedOtherPattern = otherResolverWithNullType.discrimination.apply(otherPattern.pattern)
                 val undiscriminatedOtherResolver = otherResolverWithNullType.dropDiscriminator()
 
                 val propertyLimitResults: List<Result.Failure> = olderPropertyLimitsEncompassNewer(this, otherPattern)
@@ -108,7 +107,7 @@ data class JSONObjectPattern(override val pattern: Map<String, Pattern> = emptyM
         if (sampleData !is JSONObjectValue)
             return mismatchResult("JSON object", sampleData, resolver.mismatchMessages)
 
-        resolver.discriminator.matches(sampleData).let {
+        resolver.discrimination.matches(sampleData).let {
             if(! it.isSuccess())
                 return it
         }
@@ -142,7 +141,7 @@ data class JSONObjectPattern(override val pattern: Map<String, Pattern> = emptyM
     }
 
     override fun generate(resolver: Resolver): JSONObjectValue {
-        val discriminatedPattern = resolver.discriminator.discriminate(pattern)
+        val discriminatedPattern = resolver.discrimination.apply(pattern)
         val undiscriminatedResolver = resolver.dropDiscriminator()
 
         return selectPropertiesWithinMaxAndMin(discriminatedPattern, minProperties, maxProperties).let {
@@ -151,7 +150,7 @@ data class JSONObjectPattern(override val pattern: Map<String, Pattern> = emptyM
     }
 
     override fun newBasedOn(row: Row, resolver: Resolver): List<JSONObjectPattern> {
-        val discriminatedPattern = resolver.discriminator.discriminate(pattern)
+        val discriminatedPattern = resolver.discrimination.apply(pattern)
         val undiscriminatedResolver = resolver.dropDiscriminator()
 
         return allOrNothingCombinationIn(discriminatedPattern.minus("..."), undiscriminatedResolver.resolveRow(row), minProperties, maxProperties) { pattern ->
@@ -162,7 +161,7 @@ data class JSONObjectPattern(override val pattern: Map<String, Pattern> = emptyM
     }
 
     override fun newBasedOn(resolver: Resolver): List<JSONObjectPattern> {
-        val discriminatedPattern = resolver.discriminator.discriminate(pattern)
+        val discriminatedPattern = resolver.discrimination.apply(pattern)
         val undiscriminatedResolver = resolver.dropDiscriminator()
 
         return allOrNothingCombinationIn(discriminatedPattern.minus("...")) { pattern ->

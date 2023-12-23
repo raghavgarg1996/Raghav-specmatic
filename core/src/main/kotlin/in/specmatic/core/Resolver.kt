@@ -35,7 +35,7 @@ data class Resolver(
     val cyclePreventionStack: List<Pattern> = listOf(),
     val defaultExampleResolver: DefaultExampleResolver = DoNotUseDefaultExample,
     val generation: GenerationStrategies = NonGenerativeTests,
-    val discriminator: Discriminator = NoDiscriminator()
+    val discrimination: ConcreteDiscriminator = DoNotDiscriminate
 ) {
     constructor(facts: Map<String, Value> = emptyMap(), mockMode: Boolean = false, newPatterns: Map<String, Pattern> = emptyMap()) : this(CheckFacts(facts), mockMode, newPatterns)
     constructor() : this(emptyMap(), false)
@@ -192,6 +192,6 @@ data class Resolver(
     }
 
     fun dropDiscriminator(): Resolver {
-        return this.copy(discriminator = NoDiscriminator())
+        return this.copy(discrimination = DoNotDiscriminate)
     }
 }

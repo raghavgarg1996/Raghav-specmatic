@@ -6,7 +6,7 @@ import `in`.specmatic.core.value.EmptyString
 import `in`.specmatic.core.value.JSONObjectValue
 import `in`.specmatic.core.value.Value
 
-class NoDiscriminatorBuilder : DiscriminatorBuilder {
+object NoDiscriminator : Discriminator {
     override fun discriminatedResolver(typeAlias: String?, resolver: Resolver): Resolver {
         return resolver
     }

@@ -5,7 +5,7 @@ import `in`.specmatic.core.pattern.Pattern
 import `in`.specmatic.core.value.JSONObjectValue
 import `in`.specmatic.core.value.StringValue
 
-data class Discriminated(val discriminatorKey: String, val discriminatorValue: String) : Discriminator {
+data class DiscriminatorKeyValuePair(val discriminatorKey: String, val discriminatorValue: String) : ConcreteDiscriminator {
     override fun matches(sampleData: JSONObjectValue): Result {
         if(discriminatorKey !in sampleData.jsonObject)
             return Result.Success()
@@ -16,7 +16,7 @@ data class Discriminated(val discriminatorKey: String, val discriminatorValue: S
         return Result.Failure("Discriminator value ${sampleData.jsonObject[discriminatorKey]} does not match expected value $discriminatorValue")
     }
 
-    override fun discriminate(pattern: Map<String, Pattern>): Map<String, Pattern> {
+    override fun apply(pattern: Map<String, Pattern>): Map<String, Pattern> {
         return if (hasDiscriminatorKey(pattern))
             updateWithDiscriminator(pattern)
         else
