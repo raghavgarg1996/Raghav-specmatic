@@ -894,8 +894,9 @@ class OpenApiSpecification(private val openApiFile: String, val openApi: OpenAPI
                     val nullable = if(schema.oneOf.any { nullableEmptyObject(it) }) listOf(NullPattern) else emptyList()
 
                     val discriminatorKey: String? = schema.discriminator?.propertyName
+                    val discriminator = discriminatorKey?.let { DiscriminatedBuilder(it) } ?: NoDiscriminator
 
-                    AnyPattern(candidatePatterns.plus(nullable), discriminator = discriminatorKey?.let { DiscriminatedBuilder(it) } ?: NoDiscriminator)
+                    AnyPattern(candidatePatterns.plus(nullable), discriminator = discriminator)
                 } else if (schema.anyOf != null) {
                     throw UnsupportedOperationException("Specmatic does not support anyOf")
                 } else {
