@@ -12,10 +12,9 @@ data class DiscriminatedBuilder(val discriminatorKey: String) : Discriminator {
         pattern: Pattern,
         resolver: Resolver
     ): Pattern {
-        val discriminatorValue = withoutPatternDelimiters(
-            pattern.typeAlias
+        val discriminatorValue =
+            pattern.typeAlias?.let { withoutPatternDelimiters(it) }
                 ?: throw ContractException("Discriminator key $discriminatorKey is set, but type alias is not set for pattern $pattern")
-        )
 
         val discriminatedResolver = resolver.copy(
             discrimination = DiscriminatorKeyValuePair(discriminatorKey, discriminatorValue)
@@ -26,7 +25,7 @@ data class DiscriminatedBuilder(val discriminatorKey: String) : Discriminator {
 
     override fun discriminatedResolver(typeAlias: String?, resolver: Resolver): Resolver {
         return typeAlias?.let {
-            resolver.copy(discrimination = DiscriminatorKeyValuePair(discriminatorKey, it))
+            resolver.copy(discrimination = DiscriminatorKeyValuePair(discriminatorKey, withoutPatternDelimiters(it)))
         } ?: resolver
     }
 

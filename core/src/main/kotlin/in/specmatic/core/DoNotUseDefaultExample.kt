@@ -14,7 +14,7 @@ object DoNotUseDefaultExample : DefaultExampleResolver {
         return null
     }
 
-    override fun resolveExample(example: String?, pattern: List<Pattern>, resolver: Resolver, discriminator: Discriminator): Value? {
+    override fun resolveExample(example: String?, patterns: List<Pattern>, resolver: Resolver, discriminator: Discriminator): Value? {
         return null
     }
 

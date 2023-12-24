@@ -8,5 +8,5 @@ import `in`.specmatic.core.value.Value
 interface DefaultExampleResolver {
     fun resolveExample(example: String?, pattern: Pattern, resolver: Resolver): Value?
     fun resolveExample(example: List<String?>?, pattern: Pattern, resolver: Resolver): JSONArrayValue?
-    fun resolveExample(example: String?, pattern: List<Pattern>, resolver: Resolver, discriminator: Discriminator): Value?
+    fun resolveExample(example: String?, patterns: List<Pattern>, resolver: Resolver, discriminator: Discriminator): Value?
 }

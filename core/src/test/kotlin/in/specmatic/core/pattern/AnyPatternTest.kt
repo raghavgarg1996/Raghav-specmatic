@@ -3,17 +3,20 @@ package `in`.specmatic.core.pattern
 import `in`.specmatic.GENERATION
 import `in`.specmatic.core.Resolver
 import `in`.specmatic.core.Result
+import `in`.specmatic.core.UseDefaultExample
 import `in`.specmatic.core.utilities.withNullPattern
 import `in`.specmatic.core.value.*
 import `in`.specmatic.emptyPattern
 import `in`.specmatic.shouldContainInAnyOrder
 import `in`.specmatic.shouldMatch
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
+import java.util.function.Consumer
 
 internal class AnyPatternTest {
     @Test
@@ -267,5 +270,115 @@ internal class AnyPatternTest {
         val listOf = type.listOf(listOf(StringValue("one"), StringValue("two"), StringValue("three")), Resolver())
 
         assertEquals(3, (listOf as JSONArrayValue).list.size)
+    }
+
+    @Nested
+    inner class Discriminator {
+        private val discriminatedOneOf = AnyPattern(
+            pattern = listOf(
+                JSONObjectPattern(
+                    mapOf(
+                        "type" to StringPattern(),
+                        "id" to NumberPattern()),
+                    typeAlias = "(Customer)"
+                )
+            ),
+            discriminator = DiscriminatedBuilder("type")
+        )
+
+        private val containedDiscriminatedOneOf = JSONObjectPattern(
+            mapOf(
+                "data" to AnyPattern(
+                    pattern = listOf(
+                        JSONObjectPattern(
+                            mapOf(
+                                "type" to StringPattern(),
+                                "id" to NumberPattern()),
+                            typeAlias = "(Customer)"
+                        )
+                    ),
+                    discriminator = DiscriminatedBuilder("type")
+                )
+            )
+        )
+
+        @Test
+        fun `a discriminated oneOf should match a JSON object with an recognized discriminator value`() {
+            val result = discriminatedOneOf.matches(parsedJSONObject("""{"type": "Customer", "id": 10}"""), Resolver())
+            assertThat(result).isInstanceOf(Result.Success::class.java)
+        }
+
+        @Test
+        fun `a discriminated oneOf should not match a JSON object with an unrecognized discriminator value`() {
+            val result = discriminatedOneOf.matches(parsedJSONObject("""{"type": "Employee", "id": 10}"""), Resolver())
+            assertThat(result).isInstanceOf(Result.Failure::class.java)
+        }
+
+        @Test
+        fun `value generation should reject a default example that does not match the discriminator`() {
+            val resolver = Resolver(defaultExampleResolver = UseDefaultExample)
+
+            assertThatThrownBy {
+                discriminatedOneOf.copy(example = """{"type": "Employee", "id": 10}""").newBasedOn(Row(), resolver).single().generate(resolver)
+            }.hasMessageContaining("Discriminator value Employee does not match expected value")
+        }
+
+        @Test
+        fun `value generation should use a default example that matches the discriminator`() {
+            val resolver = Resolver(defaultExampleResolver = UseDefaultExample)
+
+            val value = discriminatedOneOf.copy(example = """{"type": "Customer", "id": 10}""").generate(resolver)
+
+            value as JSONObjectValue
+
+            assertThat(value.jsonObject["type"]).isEqualTo(StringValue("Customer"))
+            assertThat(value.jsonObject["id"]).isEqualTo(NumberValue(10))
+        }
+
+        @Test
+        fun `newBasedOn should reject a default example that does not match the discriminator`() {
+            val resolver = Resolver(defaultExampleResolver = UseDefaultExample)
+
+            assertThatThrownBy {
+                discriminatedOneOf.copy(example = """{"type": "Employee", "id": 10}""").newBasedOn(Row(), resolver)
+            }.hasMessageContaining("Discriminator value Employee does not match expected value")
+        }
+
+        @Test
+        fun `newBasedOn should accept a default example that matches the discriminator`() {
+            val resolver = Resolver(defaultExampleResolver = UseDefaultExample)
+
+            val value = discriminatedOneOf.copy(example = """{"type": "Customer", "id": 10}""").newBasedOn(Row(), resolver).single().generate(resolver)
+
+            value as JSONObjectValue
+
+            assertThat(value.jsonObject["type"]).isEqualTo(StringValue("Customer"))
+            assertThat(value.jsonObject["id"]).isEqualTo(NumberValue(10))
+        }
+
+        @Test
+        fun `newBasedOn should reject an example that does not match the discriminator`() {
+            val resolver = Resolver(defaultExampleResolver = UseDefaultExample)
+
+            val row = Row(listOf("data"), listOf("""{"type": "Employee", "id": 10}"""))
+
+            assertThatThrownBy {
+                containedDiscriminatedOneOf.newBasedOn(row, resolver)
+            }.satisfies({
+                assertThat((it as ContractException).report()).contains("Discriminator value Employee does not match expected value")
+            })
+        }
+
+        @Test
+        fun `newBasedOn should accept an example that matches the discriminator`() {
+            val resolver = Resolver(defaultExampleResolver = UseDefaultExample)
+
+            val row = Row(listOf("data"), listOf("""{"type": "Customer", "id": 10}"""))
+
+            val value = containedDiscriminatedOneOf.newBasedOn(row, resolver).single().generate(resolver)
+
+            assertThat(value.findFirstChildByPath("data.type")).isEqualTo(StringValue("Customer"))
+            assertThat(value.findFirstChildByPath("data.id")).isEqualTo(NumberValue(10))
+        }
     }
 }
