@@ -1,6 +1,7 @@
 package `in`.specmatic.core
 
 import `in`.specmatic.core.pattern.ContractException
+import `in`.specmatic.core.pattern.Discriminator
 import `in`.specmatic.core.pattern.Pattern
 import `in`.specmatic.core.pattern.attempt
 import `in`.specmatic.core.utilities.exceptionCauseMessage
@@ -21,15 +22,16 @@ object UseDefaultExample : DefaultExampleResolver {
         throw ContractException("Example \"$example\" does not match ${pattern.typeName} type")
     }
 
-    override fun resolveExample(example: String?, pattern: List<Pattern>, resolver: Resolver): Value? {
+    override fun resolveExample(example: String?, patterns: List<Pattern>, resolver: Resolver, discriminator: Discriminator): Value? {
         if(example == null)
             return null
 
-        val matchResults = pattern.asSequence().map {
+        val matchResults = patterns.asSequence().map { pattern ->
             try {
-                val value = it.parse(example, Resolver())
+                val discriminatedResolver = discriminator.discriminatedResolver(pattern.typeAlias, resolver)
+                val value = pattern.parse(example, discriminatedResolver)
 
-                Pair(it.matches(value, Resolver()), value)
+                Pair(pattern.matches(value, discriminatedResolver), value)
             } catch(e: Throwable) {
                 Pair(Result.Failure(exceptionCauseMessage(e)), null)
             }

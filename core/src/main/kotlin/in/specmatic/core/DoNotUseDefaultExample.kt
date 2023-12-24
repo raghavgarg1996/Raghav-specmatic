@@ -1,5 +1,6 @@
 package `in`.specmatic.core
 
+import `in`.specmatic.core.pattern.Discriminator
 import `in`.specmatic.core.pattern.Pattern
 import `in`.specmatic.core.value.JSONArrayValue
 import `in`.specmatic.core.value.Value
@@ -13,7 +14,7 @@ object DoNotUseDefaultExample : DefaultExampleResolver {
         return null
     }
 
-    override fun resolveExample(example: String?, pattern: List<Pattern>, resolver: Resolver): Value? {
+    override fun resolveExample(example: String?, pattern: List<Pattern>, resolver: Resolver, discriminator: Discriminator): Value? {
         return null
     }
 

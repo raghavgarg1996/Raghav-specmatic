@@ -167,8 +167,8 @@ data class Resolver(
         return defaultExampleResolver.resolveExample(example, pattern, this)
     }
 
-    fun resolveExample(example: String?, pattern: List<Pattern>): Value? {
-        return defaultExampleResolver.resolveExample(example, pattern, this)
+    fun resolveExample(example: String?, pattern: List<Pattern>, discriminator: Discriminator): Value? {
+        return defaultExampleResolver.resolveExample(example, pattern, this, discriminator)
     }
 
     fun resolveExample(example: List<String?>?, pattern: Pattern): JSONArrayValue? {

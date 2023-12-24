@@ -82,7 +82,7 @@ data class AnyPattern(
     private fun isEmpty(it: Pattern) = it.typeAlias == "(empty)" || it is NullPattern
 
     override fun generate(resolver: Resolver): Value {
-        return resolver.resolveExample(example, pattern) ?: generateRandomValue(resolver)
+        return resolver.resolveExample(example, pattern, discriminator) ?: generateRandomValue(resolver)
     }
 
     private fun generateRandomValue(resolver: Resolver): Value {
@@ -101,7 +101,7 @@ data class AnyPattern(
     }
 
     override fun newBasedOn(row: Row, resolver: Resolver): List<Pattern> {
-        resolver.resolveExample(example, pattern)?.let {
+        resolver.resolveExample(example, pattern, discriminator)?.let {
             return listOf(ExactValuePattern(it))
         }
 
