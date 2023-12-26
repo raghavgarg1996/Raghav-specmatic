@@ -66,10 +66,14 @@ data class AllOfPattern(
     }
 
     fun mergedPattern(resolver: Resolver): Pattern {
-        return pattern.reduce { acc, pattern ->
-            resolver.withCyclePrevention(pattern, false) { cyclePreventedResolver ->
-                acc.merge(pattern, cyclePreventedResolver)
-            } ?: acc
+        try {
+            return pattern.reduce { acc, pattern ->
+                resolver.withCyclePrevention(pattern, false) { cyclePreventedResolver ->
+                    acc.merge(pattern, cyclePreventedResolver)
+                } ?: acc
+            }
+        } catch (e: Throwable) {
+            throw e
         }
     }
 
@@ -86,7 +90,7 @@ data class AllOfPattern(
     }
 
     override fun parse(value: String, resolver: Resolver): Value {
-        return mergedPattern(resolver).parse(value, resolver)
+        return pattern.first().parse(value, resolver)
     }
 
     override fun patternSet(resolver: Resolver): List<Pattern> =
