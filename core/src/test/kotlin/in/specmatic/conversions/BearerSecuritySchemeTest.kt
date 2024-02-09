@@ -25,6 +25,12 @@ class BearerSecuritySchemeTest {
     }
 
     @Test
+    fun `Bearer security scheme matche is case-insensitive`() {
+        val requestWithBearer = HttpRequest(method = "POST", path = "/customer", headers = mapOf(AUTHORIZATION.lowercase() to "Bearer foo"))
+        assertThat(scheme.matches(requestWithBearer).isSuccess()).isTrue
+    }
+
+    @Test
     fun `Bearer security scheme does not matches requests with authorization header not set`() {
         val requestWithoutHeader = HttpRequest(method = "POST", path = "/customer")
         with(scheme.matches(requestWithoutHeader)) {

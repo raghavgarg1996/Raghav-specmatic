@@ -31,7 +31,15 @@ fun addToHeaderType(
 
     return requestPattern.copy(
         headersPattern = requestPattern.headersPattern.copy(
-            pattern = requestPattern.headersPattern.pattern.plus(headerName to headerValueType)
+            pattern = removeHeader(headerName, requestPattern.headersPattern.pattern).plus(headerName to headerValueType)
         )
     )
+}
+
+fun <ValueType> removeHeader(headerName: String, headers: Map<String, ValueType>): Map<String, ValueType> {
+    val header = headers.keys.find {
+        it.equals(headerName, ignoreCase = true)
+    } ?: return headers
+
+    return headers.minus(header)
 }
