@@ -13,10 +13,13 @@ import `in`.specmatic.core.value.Value
 import `in`.specmatic.stub.hasOpenApiFileExtension
 import `in`.specmatic.stub.isOpenAPI
 import `in`.specmatic.test.SpecmaticJUnitSupport.URIValidationResult.*
+import `in`.specmatic.test.models.ActuatorMappings
 import `in`.specmatic.test.reports.OpenApiCoverageReportProcessor
 import `in`.specmatic.test.reports.coverage.Endpoint
 import `in`.specmatic.test.reports.coverage.OpenApiCoverageReportInput
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonConfiguration
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.TestFactory
@@ -107,46 +110,18 @@ open class SpecmaticJUnitSupport {
 
         fun queryActuator() {
             val endpointsAPI = System.getProperty(ENDPOINTS_API)
-
-            if(endpointsAPI != null) {
-                val request = HttpRequest("GET")
-
-                val response = HttpClient(endpointsAPI, log = ignoreLog).execute(request)
-
-                logger.debug(response.toLogString())
-
-                openApiCoverageReportInput.setEndpointsAPIFlag(true)
-
-                val endpointData = response.body as JSONObjectValue
-                val apis: List<API> = endpointData.getJSONObject("contexts").entries.flatMap { entry ->
-                    val mappings: JSONArrayValue =
-                        (entry.value as JSONObjectValue).findFirstChildByPath("mappings.dispatcherServlets.dispatcherServlet") as JSONArrayValue
-                    mappings.list.map { it as JSONObjectValue }.filter {
-                        it.findFirstChildByPath("details.handlerMethod.className")?.toStringLiteral()
-                            ?.contains("springframework") != true
-                    }.flatMap {
-                        val methods: JSONArrayValue? =
-                            it.findFirstChildByPath("details.requestMappingConditions.methods") as JSONArrayValue?
-                        val paths: JSONArrayValue? =
-                            it.findFirstChildByPath("details.requestMappingConditions.patterns") as JSONArrayValue?
-
-                        if(methods != null && paths != null) {
-                            methods.list.flatMap { method ->
-                                paths.list.map { path ->
-                                    API(method.toStringLiteral(), path.toStringLiteral())
-                                }
-                            }
-                        } else {
-                            emptyList()
-                        }
-                    }
-                }
-
-                openApiCoverageReportInput.addAPIs(apis)
-
-            } else {
+            if(endpointsAPI == null) {
                 logger.log("Endpoints API not found, cannot calculate actual coverage")
+                return
             }
+
+            val response = HttpClient(endpointsAPI, log = ignoreLog).execute(HttpRequest("GET"))
+            logger.debug(response.toLogString())
+
+            val json = Json { ignoreUnknownKeys = true }
+            val actuatorMappings = json.decodeFromString<ActuatorMappings>(response.body.toStringLiteral())
+            openApiCoverageReportInput.addAPIs(actuatorMappings.getAPIs())
+            openApiCoverageReportInput.setEndpointsAPIFlag(true)
         }
 
         val configFile get() = System.getProperty(CONFIG_FILE_NAME) ?: getGlobalConfigFileName()
